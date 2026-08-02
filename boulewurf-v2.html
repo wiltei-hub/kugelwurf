@@ -68,7 +68,9 @@
     position: relative; flex: 1 1 auto; min-height: max(88px, calc(150px * var(--s)));
     background: linear-gradient(180deg, var(--terrain) 0%, var(--terrain-deep) 100%);
   }
-  canvas { display: block; width: 100%; height: 100%; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  canvas.greifbar { cursor: grab; }
+  canvas.zieht { cursor: grabbing; }
 
   #telemetrie {
     position: absolute; top: 10px; left: 12px;
@@ -2165,11 +2167,121 @@
     }
   }
 
+  /* ---------- 5b. Zielobjekte mit Maus oder Finger verschieben ---------- */
+
+  /* Verschiebbar sind die Ausgangslagen, nicht die laufenden Körper: das
+     Cochonnet immer, die Zielkugel nur, wenn sie im Spiel ist. Gezogen wird in
+     der Seitenansicht längs, in der Draufsicht längs und quer. */
+  function ziehbareObjekte() {
+    var p = parameter();
+    var liste = [{ art: "Cochonnet", x: p.ziel, z: p.zielZ,
+                   rx: "ziel", rz: "zielz" }];
+    if (zielkugelAn) {
+      liste.push({ art: "Zielkugel", x: p.zkx, z: p.zkz, rx: "zkx", rz: "zkz" });
+    }
+    return liste;
+  }
+
+  function begrenze(id, wert) {
+    var e = el(id);
+    return Math.max(parseFloat(e.min), Math.min(parseFloat(e.max), wert));
+  }
+
+  function setzeRegler(id, wert) {
+    var e = el(id);
+    var schritt = parseFloat(e.step) || 0.01;
+    e.value = (Math.round(begrenze(id, wert) / schritt) * schritt).toFixed(4);
+  }
+
+  function findeObjekt(px, py, oben) {
+    var liste = ziehbareObjekte(), best = null, bestD = 26;
+    for (var i = 0; i < liste.length; i++) {
+      var o = liste[i];
+      var ox = view.sx(o.x);
+      var oy = oben ? (sichtOben ? sichtOben.sz(o.z) : 0) : view.boden - 10;
+      var dx = px - ox, dy = py - oy;
+      var d = oben ? Math.sqrt(dx * dx + dy * dy) : Math.sqrt(dx * dx + (dy * dy) / 9);
+      if (d < bestD) { bestD = d; best = o; }
+    }
+    return best;
+  }
+
+  var ziehe = null, ziehBildGeplant = false;
+
+  /* Höchstens eine Neuberechnung je Bildaufbau, egal wie dicht die Zeigerdaten
+     hereinkommen. */
+  function planeZiehBild() {
+    if (ziehBildGeplant) return;
+    ziehBildGeplant = true;
+    requestAnimationFrame(function () {
+      ziehBildGeplant = false;
+      beschrifteRegler();
+      neuRechnen(true);
+    });
+  }
+
+  function zeigerLage(ev, leinwand) {
+    var r = leinwand.getBoundingClientRect();
+    return { px: ev.clientX - r.left, py: ev.clientY - r.top };
+  }
+
+  function ziehStart(ev, leinwand, oben) {
+    if (!view) return;
+    var l = zeigerLage(ev, leinwand);
+    var o = findeObjekt(l.px, l.py, oben);
+    if (!o) return;
+    ziehe = { objekt: o, oben: oben, leinwand: leinwand };
+    leinwand.classList.add("zieht");
+    if (leinwand.setPointerCapture) leinwand.setPointerCapture(ev.pointerId);
+    anhalten();
+    ev.preventDefault();
+  }
+
+  function ziehBewegung(ev, leinwand, oben) {
+    var l = zeigerLage(ev, leinwand);
+
+    if (!ziehe) {                       /* nur Mauszeiger anpassen */
+      if (view) {
+        leinwand.classList.toggle("greifbar", !!findeObjekt(l.px, l.py, oben));
+      }
+      return;
+    }
+
+    var o = ziehe.objekt;
+    setzeRegler(o.rx, (l.px - view.links) / view.skala);
+    if (ziehe.oben && sichtOben) {
+      setzeRegler(o.rz, (sichtOben.mitte - l.py) / sichtOben.skalaZ);
+    }
+    planeZiehBild();
+    ev.preventDefault();
+  }
+
+  function ziehEnde(leinwand) {
+    if (!ziehe) return;
+    ziehe.leinwand.classList.remove("zieht");
+    ziehe = null;
+    beschrifteRegler();
+    neuRechnen(true);            /* holt die ausgesetzte Serie nach */
+  }
+
+  function verdrahteZiehen(leinwand, oben) {
+    leinwand.addEventListener("pointerdown", function (ev) { ziehStart(ev, leinwand, oben); });
+    leinwand.addEventListener("pointermove", function (ev) { ziehBewegung(ev, leinwand, oben); });
+    leinwand.addEventListener("pointerup", function () { ziehEnde(leinwand); });
+    leinwand.addEventListener("pointercancel", function () { ziehEnde(leinwand); });
+    leinwand.addEventListener("pointerleave", function () {
+      if (!ziehe) leinwand.classList.remove("greifbar");
+    });
+  }
+
   /* ---------- 6. Ablauf ---------- */
 
   function neuRechnen(zeigeGanzeBahn) {
     bahn = simuliere(parameter());
-    if (streuung) { streuung = rechneStreuung(); schreibeStreuzeile(); }
+    /* Während des Ziehens würde die Serie bei jeder Mausbewegung neu laufen —
+       bei 500 Würfen sind das über 100 ms je Bewegung. Sie wird einmal am Ende
+       nachgeholt. */
+    if (streuung && !ziehe) { streuung = rechneStreuung(); schreibeStreuzeile(); }
     baueAnsicht();
     schreibeProtokoll();
     schreibeDeutung();
@@ -2215,17 +2327,23 @@
     if (laeuft) requestAnimationFrame(schleife);
   }
 
-  /* Wachhund: bleibt die Schleife stehen, wird das nicht stumm verschluckt,
-     sondern der Wurf am Stück angezeigt und der Knopf zurückgesetzt. */
+  /* Wachhund gegen eine stumm hängende Schleife.
+
+     Wichtig: der Browser liefert keine Bilder, solange der Tab im Hintergrund
+     liegt oder das Fenster verdeckt ist. Das ist kein Fehler. Früher schlug der
+     Wachhund genau dann an — seit die Läufe mit Cochonnet und Zielkugel bis zu
+     zehn Sekunden dauern, passiert das leicht. Deshalb ruht er bei verborgener
+     Seite, und beim Zurückkommen wird die Zeitbasis nachgeführt, statt die
+     Animation zu verwerfen. */
   setInterval(function () {
-    if (!laeuft) return;
-    if (jetztMs() - letzterTakt < 1500) return;
+    if (!laeuft || document.hidden) return;
+    if (jetztMs() - letzterTakt < 2500) return;
     laeuft = false;
     el("werfen").textContent = "Nochmal";
-    frameIndex = bahn ? bahn.punkte.length - 1 : 0;
+    frameIndex = bahn && bahn.punkte ? bahn.punkte.length - 1 : 0;
     zeichne(frameIndex);
-    meldeFehler("Die Animation wurde angehalten (keine Bilder mehr vom Browser). " +
-                "Der Wurf ist vollständig berechnet und wird als Ganzes gezeigt.", "Wachhund");
+    meldeFehler("Die Animation kam ins Stocken und wurde beendet. Der Wurf ist " +
+                "vollständig berechnet und wird als Ganzes gezeigt.", "Wachhund");
   }, 1000);
 
   function werfen() {
@@ -2569,11 +2687,22 @@
     waehleBoden(STANDARD_BODEN);
   });
 
+  if (window.PointerEvent) {
+    verdrahteZiehen(canvas, false);
+    verdrahteZiehen(obenLeinwand, true);
+  }
+
   window.addEventListener("resize", planeMessung);
   window.addEventListener("orientationchange", function () { setTimeout(passeGroesseAn, 300); });
   window.addEventListener("load", planeMessung);
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) planeMessung();
+    if (document.hidden) return;
+    planeMessung();
+    if (laeuft) {                 /* Zeitbasis auf das aktuelle Bild nachführen */
+      startzeit = jetztMs() - (frameIndex * DT * 1000) / tempo;
+      letzterTakt = jetztMs();
+      requestAnimationFrame(schleife);
+    }
   });
 
   /* Der Container kann sich ohne resize-Ereignis ändern: eingebettete Vorschau,
