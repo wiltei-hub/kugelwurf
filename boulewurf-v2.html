@@ -396,9 +396,9 @@
     <div class="messwert"><dt>Seitenablage</dt><dd id="m-seite">–</dd><p class="delta" id="d-seite"></p></div>
     <div class="messwert"><dt>Dauer</dt><dd id="m-dauer">–</dd><p class="delta" id="d-dauer"></p></div>
     <div class="messwert" id="m-treffer"><dt>Abstand zum Ziel</dt><dd id="m-abstand">–</dd><p class="delta" id="d-abstand"></p></div>
-    <div class="messwert schuss" id="m-schuss-feld"><dt>Schuss</dt><dd id="m-schuss">–</dd><p class="delta" id="d-schuss"></p></div>
-    <div class="messwert schuss" id="m-zk-feld"><dt>Zielkugel bewegt</dt><dd id="m-zk">–</dd><p class="delta" id="d-zk"></p></div>
-    <div class="messwert schuss" id="m-co-feld"><dt>Cochonnet bewegt</dt><dd id="m-co">–</dd><p class="delta" id="d-co"></p></div>
+    <div class="messwert schuss" id="m-schuss-feld" hidden><dt>Schuss</dt><dd id="m-schuss">–</dd><p class="delta" id="d-schuss"></p></div>
+    <div class="messwert schuss" id="m-zk-feld" hidden><dt>Zielkugel bewegt</dt><dd id="m-zk">–</dd><p class="delta" id="d-zk"></p></div>
+    <div class="messwert schuss" id="m-co-feld" hidden><dt>Cochonnet bewegt</dt><dd id="m-co">–</dd><p class="delta" id="d-co"></p></div>
   </dl>
 
   <div id="vergleich" hidden></div>
@@ -1088,7 +1088,7 @@
       }
     }
 
-    var t = 0, i, j, stoss = null, minSpalt = 1e9;
+    var t = 0, i, j, stoss = null, minSpalt = 1e9, cochNah = null;
 
     while (t < MAX_T) {
       var lebt = false;
@@ -1106,6 +1106,16 @@
           if (a.zustand === "still" && b.zustand === "still") continue;
           var spalt = abstandKugeln(a, b, false) - (a.R + b.R);
           if (spalt < minSpalt) minSpalt = spalt;
+
+          /* Engste Annäherung an das Cochonnet mitschreiben — damit ein Fehlschuss
+             erklärbar wird: meist fliegt die Kugel schlicht darüber hinweg. */
+          if (coch && (a.rolle === "cochonnet" || b.rolle === "cochonnet") &&
+                      (a.rolle === "schuetze"  || b.rolle === "schuetze")) {
+            if (!cochNah || spalt < cochNah.spalt) {
+              cochNah = { spalt: spalt, hoehe: schuetze.y,
+                          laengs: schuetze.x - coch.startX };
+            }
+          }
           if (spalt <= 0) {
             var tr = stossKugeln(a, b, p, rnd);
             if (tr && !stoss) { stoss = tr; stoss.t = t; }
@@ -1145,7 +1155,10 @@
         spur: coch.spur, R: coch.R, startX: coch.startX, startZ: coch.startZ,
         x: coch.x, z: coch.z, hMax: coch.hMax,
         verschiebung: Math.sqrt(cvx * cvx + cvz * cvz),
-        getroffen: Math.sqrt(cvx * cvx + cvz * cvz) > 0.01
+        getroffen: Math.sqrt(cvx * cvx + cvz * cvz) > 0.01,
+        nahSpalt: cochNah ? Math.max(0, cochNah.spalt) : null,
+        nahHoehe: cochNah ? cochNah.hoehe : null,
+        nahLaengs: cochNah ? cochNah.laengs : null
       };
     }
 
@@ -2116,9 +2129,19 @@
   function schreibeSchussfelder() {
     if (cochonnetAn && bahn.cochonnet) {
       var co = bahn.cochonnet;
-      el("m-co").innerHTML = co.getroffen
-        ? co.verschiebung.toFixed(2) + " <span>m → jetzt bei " + co.x.toFixed(2) + " m</span>"
-        : "– <span>nicht berührt</span>";
+      if (co.getroffen) {
+        el("m-co").innerHTML = co.verschiebung.toFixed(2) +
+          " <span>m → jetzt bei " + co.x.toFixed(2) + " m</span>";
+      } else if (co.nahSpalt === null) {
+        el("m-co").innerHTML = "– <span>nicht erreicht</span>";
+      } else if (co.nahHoehe > 0.005 && Math.abs(co.nahLaengs) < 0.25) {
+        /* Die Kugel war längs auf Höhe des Cochonnets, aber zu hoch. */
+        el("m-co").innerHTML = "– <span>überflogen in " +
+          (co.nahHoehe * 100).toFixed(0) + " cm Höhe</span>";
+      } else {
+        el("m-co").innerHTML = "– <span>vorbei um " +
+          (co.nahSpalt * 100).toFixed(0) + " cm</span>";
+      }
     }
     if (!zielkugelAn || !bahn.zielKugel) return;
     var feld = el("m-schuss");
