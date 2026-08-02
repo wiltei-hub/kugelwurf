@@ -409,7 +409,7 @@
     <div class="regler">
       <div class="regel">
         <label for="v0">Abwurfgeschwindigkeit</label><output id="v0-wert"></output>
-        <input type="range" id="v0" min="3" max="12" step="0.1" value="6.8">
+        <input type="range" id="v0" min="3" max="12" step="0.1" value="7.3">
       </div>
       <div class="regel">
         <label for="winkel">Abwurfwinkel <span class="franz">La portée</span></label><output id="winkel-wert"></output>
@@ -421,7 +421,7 @@
       </div>
       <div class="regel">
         <label for="ziel">Cochonnet Entfernung</label><output id="ziel-wert"></output>
-        <input type="range" id="ziel" min="4" max="12" step="0.1" value="8">
+        <input type="range" id="ziel" min="4" max="12" step="0.1" value="7.7">
       </div>
       <div class="regel">
         <label for="zielz">Cochonnet seitlich</label><output id="zielz-wert"></output>
@@ -447,13 +447,13 @@
   <section class="gruppe">
     <h2>Schuss <button type="button" class="hilfe" id="hilfe-schuss" aria-expanded="false" aria-controls="erklaerung-schuss">Wie wird gerechnet?</button></h2>
     <div id="schussschalter">
-      <button type="button" class="boden" id="zielkugel" aria-pressed="false">Zielkugel im Spiel</button>
-      <button type="button" class="boden" id="cochonnetkoerper" aria-pressed="false">Cochonnet beweglich</button>
+      <button type="button" class="boden" id="zielkugel" aria-pressed="true">Zielkugel im Spiel</button>
+      <button type="button" class="boden" id="cochonnetkoerper" aria-pressed="true">Cochonnet beweglich</button>
     </div>
     <div class="regler">
       <div class="regel">
         <label for="zkx">Zielkugel Entfernung</label><output id="zkx-wert"></output>
-        <input type="range" id="zkx" min="3" max="13" step="0.05" value="8">
+        <input type="range" id="zkx" min="3" max="13" step="0.05" value="8.5">
       </div>
       <div class="regel">
         <label for="zkz">Zielkugel seitlich</label><output id="zkz-wert"></output>
@@ -678,9 +678,9 @@
   ];
   var STANDARD_BODEN = 1;
 
-  var STANDARD = { v0: 6.8, winkel: 42, y0: 1.40, ziel: 8, zielz: 0, masse: 700, durchmesser: 74,
+  var STANDARD = { v0: 7.3, winkel: 42, y0: 1.40, ziel: 7.7, zielz: 0, masse: 700, durchmesser: 74,
                    drall: 0, verdrehung: 0, anzahl: 100, streuV: 0.15, streuW: 1.0,
-                   zkx: 8, zkz: 0, zkm: 700, zkd: 74, richtung: 0, cm: 12, cd: 30 };
+                   zkx: 8.5, zkz: 0, zkm: 700, zkd: 74, richtung: 0, cm: 12, cd: 30 };
 
   var el = function (id) { return document.getElementById(id); };
 
@@ -739,8 +739,10 @@
   var saatWurf = 1;                         /* Zufallskeim des aktuellen Wurfs */
   var streuung = null;                      /* Ergebnis der Streurechnung */
   var streuN = 100;
-  var zielkugelAn = false;
-  var cochonnetAn = false;
+  /* Beim Start läuft ein Wurf, der beide Ziele trifft: die Kugel rollt über das
+     Cochonnet bei 7,70 m hinweg und stößt danach die Zielkugel bei 8,50 m an. */
+  var zielkugelAn = true;
+  var cochonnetAn = true;
 
   var BASIS_X = 15.0;                  /* fester Maßstab: 15 m Piste über die Fensterbreite */
   var bahn = null, view = null, kies = [], halme = [];
@@ -2706,6 +2708,9 @@
   el("zuruecksetzen").addEventListener("click", function () {
     el("fehlerleiste").hidden = true;
     letzterFehler = "";
+    zielkugelAn = true;  el("zielkugel").setAttribute("aria-pressed", "true");
+    cochonnetAn = true;  el("cochonnetkoerper").setAttribute("aria-pressed", "true");
+    zeigeSchussfelder();
     Object.keys(STANDARD).forEach(function (k) { el(k).value = STANDARD[k]; });
     waehleBoden(STANDARD_BODEN);
   });
@@ -2741,6 +2746,7 @@
 
   setzeMassstabsfaktoren();
   baueBodenwahl();
+  zeigeSchussfelder();
   beschrifteRegler();
   bahn = simuliere(parameter());
   passeGroesseAn();
