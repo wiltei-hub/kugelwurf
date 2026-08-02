@@ -418,8 +418,12 @@
         <input type="range" id="y0" min="0.3" max="1.8" step="0.05" value="1.40">
       </div>
       <div class="regel">
-        <label for="ziel">Lage des Zielballs <span class="franz">Cochonnet</span></label><output id="ziel-wert"></output>
+        <label for="ziel">Cochonnet Entfernung</label><output id="ziel-wert"></output>
         <input type="range" id="ziel" min="4" max="12" step="0.1" value="8">
+      </div>
+      <div class="regel">
+        <label for="zielz">Cochonnet seitlich</label><output id="zielz-wert"></output>
+        <input type="range" id="zielz" min="-1.5" max="1.5" step="0.01" value="0">
       </div>
     </div>
   </section>
@@ -672,7 +676,7 @@
   ];
   var STANDARD_BODEN = 1;
 
-  var STANDARD = { v0: 6.8, winkel: 42, y0: 1.40, ziel: 8, masse: 700, durchmesser: 74,
+  var STANDARD = { v0: 6.8, winkel: 42, y0: 1.40, ziel: 8, zielz: 0, masse: 700, durchmesser: 74,
                    drall: 0, verdrehung: 0, anzahl: 100, streuV: 0.15, streuW: 1.0,
                    zkx: 8, zkz: 0, zkm: 700, zkd: 74, richtung: 0, cm: 12, cd: 30 };
 
@@ -1055,7 +1059,7 @@
     if (p.cochonnetKoerper) {
       var Rc = p.cd / 2000;
       coch = neuerKoerper(p, {
-        rolle: "cochonnet", x: p.ziel, y: 0, z: 0,
+        rolle: "cochonnet", x: p.ziel, y: 0, z: p.zielZ,
         vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0,
         m: p.cm / 1000, d: 2 * Rc, zustand: "still"
       });
@@ -1120,7 +1124,7 @@
     var s = schuetze;
     var donnee = s.aufpralle.length ? s.aufpralle[0].x : s.x;
     /* Wenn das Cochonnet mitspielt, zählt seine Endlage als Ziel. */
-    var zx = coch ? coch.x : p.ziel, zz = coch ? coch.z : 0;
+    var zx = coch ? coch.x : p.ziel, zz = coch ? coch.z : p.zielZ;
     var abstand = Math.sqrt((s.x - zx) * (s.x - zx) + (s.z - zz) * (s.z - zz));
 
     var erg = {
@@ -1128,7 +1132,7 @@
       weite: s.x, seite: s.z, abstand: abstand, dauer: t,
       donnee: donnee, rollweg: s.x - donnee,
       krater: s.tiefen.length ? s.tiefen[0] : 0,
-      ziel: p.ziel, zielX: zx, zielZ: zz, R: R, sinMax: s.sinMax,
+      ziel: p.ziel, zielSeite: p.zielZ, zielX: zx, zielZ: zz, R: R, sinMax: s.sinMax,
       koerper: koerper, treffer: !!stoss, stoss: stoss,
       fehlabstand: stoss ? 0 : Math.max(0, minSpalt)
     };
@@ -1170,6 +1174,7 @@
       winkel:      parseFloat(el("winkel").value),
       y0:          parseFloat(el("y0").value),
       ziel:        parseFloat(el("ziel").value),
+      zielZ:       parseFloat(el("zielz").value),
       m:           parseFloat(el("masse").value) / 1000,
       durchmesser: parseFloat(el("durchmesser").value),
       e:           parseFloat(el("e").value),
@@ -1263,6 +1268,7 @@
     el("winkel-wert").textContent      = p.winkel.toFixed(0) + "°";
     el("y0-wert").textContent          = p.y0.toFixed(2) + " m";
     el("ziel-wert").textContent        = p.ziel.toFixed(1) + " m";
+    el("zielz-wert").textContent       = (p.zielZ >= 0 ? "+" : "−") + Math.abs(p.zielZ).toFixed(2) + " m";
     el("masse-wert").textContent       = Math.round(p.m * 1000) + " g";
     el("durchmesser-wert").textContent = p.durchmesser.toFixed(1) + " mm";
     el("e-wert").textContent           = "e = " + p.e.toFixed(2);
@@ -1394,6 +1400,7 @@
       if (azk > zMax) zMax = azk;
     }
     if (bahn.cochonnet && Math.abs(bahn.cochonnet.z) > zMax) zMax = Math.abs(bahn.cochonnet.z);
+    if (Math.abs(bahn.zielSeite) > zMax) zMax = Math.abs(bahn.zielSeite);
     if (streuung && streuung.zMax > zMax) zMax = streuung.zMax;
     zMax = zMax * 1.25;
 
@@ -1518,7 +1525,7 @@
     }
 
     /* Cochonnet */
-    var ccx = bahn.ziel, ccz = 0;
+    var ccx = bahn.ziel, ccz = bahn.zielSeite;
     if (bahn.cochonnet) {
       var co2 = bahn.cochonnet;
       var ci = Math.max(0, Math.min(co2.spur.length - 1, i));
@@ -1979,7 +1986,7 @@
   }
 
   function zeichneCochonnet(i) {
-    var cx = bahn.ziel, cz = 0, rC = R_ZIEL;
+    var cx = bahn.ziel, cz = bahn.zielSeite, rC = R_ZIEL;
     if (bahn.cochonnet) {
       var co = bahn.cochonnet;
       var idx = Math.max(0, Math.min(co.spur.length - 1, i === undefined ? co.spur.length - 1 : i));
@@ -2233,7 +2240,7 @@
 
   /* ---------- 7. Verdrahtung ---------- */
 
-  ["v0", "winkel", "y0", "ziel", "masse", "durchmesser", "drall", "verdrehung",
+  ["v0", "winkel", "y0", "ziel", "zielz", "masse", "durchmesser", "drall", "verdrehung",
    "anzahl", "streuV", "streuW", "zkx", "zkz", "zkm", "zkd", "richtung",
    "cm", "cd"].forEach(function (id) {
     el(id).addEventListener("input", function () {
