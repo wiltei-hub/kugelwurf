@@ -1,0 +1,2594 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kugelwurf — Boule-Simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --terrain-deep: #191C19;
+    --terrain:      #232723;
+    --panel:        #2B302B;
+    --steel:        #B4BEC4;
+    --steel-dim:    #6E7A80;
+    --ochre:        #D0902B;
+    --vergleich:    #7FA8A2;
+    --abwurf:       #D6412B;
+    --brick:        #A8503C;
+    --chalk:        #EDEAE1;
+    --chalk-dim:    #8E8B82;
+
+    --f-display: "Oswald", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
+    --f-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+
+    /* Alle Maße beziehen sich auf das Fenster 2048 x 993. --s skaliert die Flächen
+       proportional zur Fensterhöhe, --fs die Schrift zurückhaltender, damit sie in
+       kleinen Fenstern lesbar bleibt. Beide setzt das Skript bei jeder Messung. */
+    --s: 1;
+    --fs: 1;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100vh;
+    height: 100dvh;      /* ohne die ein- und ausfahrende Adressleiste auf Mobilgeräten */
+    background: var(--terrain-deep);
+    color: var(--chalk);
+    font-family: var(--f-body);
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overflow: hidden;
+  }
+
+  header {
+    display: flex; align-items: baseline; gap: calc(14px * var(--s));
+    padding: calc(11px * var(--s)) 18px calc(9px * var(--s));
+    border-bottom: 1px solid #000;
+    flex: none;
+  }
+  h1 {
+    font-family: var(--f-display); font-weight: 500;
+    font-size: max(13px, calc(21px * var(--fs)));
+    letter-spacing: .16em; text-transform: uppercase; margin: 0; line-height: 1;
+  }
+  h1 .accent { color: var(--ochre); }
+  .eyebrow {
+    font-family: var(--f-mono); font-size: max(8px, calc(10px * var(--fs))); letter-spacing: .18em;
+    text-transform: uppercase; color: var(--chalk-dim);
+  }
+
+  #piste {
+    position: relative; flex: 1 1 auto; min-height: max(88px, calc(150px * var(--s)));
+    background: linear-gradient(180deg, var(--terrain) 0%, var(--terrain-deep) 100%);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  #telemetrie {
+    position: absolute; top: 10px; left: 12px;
+    display: flex; flex-wrap: wrap; gap: 2px calc(18px * var(--s));
+    font-family: var(--f-mono); font-size: max(9px, calc(11px * var(--fs))); color: var(--chalk-dim);
+    pointer-events: none;
+  }
+  #telemetrie b { color: var(--chalk); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #telemetrie .phase { color: var(--ochre); }
+  #telemetrie .ergebnis { color: #6E7A6E; }
+  #telemetrie .ergebnis b { color: var(--ochre); }
+  #streu-zeile { color: var(--abwurf); }
+  #streu-zeile[hidden] { display: none; }
+  #hinweis-hoehe {
+    position: absolute; top: 10px; right: 12px;
+    font-family: var(--f-mono); font-size: 10px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ochre); pointer-events: none;
+  }
+  #hinweis-hoehe[hidden] { display: none; }
+
+  #fehlerleiste {
+    position: absolute; left: 12px; right: 12px; top: 30px;
+    background: rgba(168,80,60,.94); color: #FFF6F3;
+    font-family: var(--f-mono); font-size: 11px; line-height: 1.45;
+    padding: 8px 11px; border-radius: 2px; z-index: 5;
+  }
+  #fehlerleiste[hidden] { display: none; }
+
+  #diagnose {
+    position: absolute; right: 12px; bottom: 12px; margin: 0;
+    background: rgba(14,16,14,.88); color: var(--chalk);
+    font-family: var(--f-mono); font-size: 10.5px; line-height: 1.5;
+    padding: 9px 12px; border-left: 2px solid var(--ochre);
+    white-space: pre; pointer-events: none; z-index: 4;
+  }
+  #diagnose[hidden] { display: none; }
+
+  #draufsicht-box {
+    position: relative; flex: none; height: max(46px, calc(104px * var(--s)));
+    border-top: 1px solid #000;
+    background: var(--terrain-deep);
+  }
+  #draufsicht-box canvas { display: block; width: 100%; height: 100%; }
+  .achsentitel {
+    position: absolute; top: 5px; left: 12px;
+    font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--chalk-dim); pointer-events: none;
+  }
+  @media (max-width: 560px) { #draufsicht-box { height: 96px; } }
+
+  button.streu[aria-pressed="true"] {
+    background: var(--brick); color: var(--chalk); box-shadow: none;
+  }
+
+  #pult {
+    flex: 0 1 auto; min-height: 0;
+    background: var(--panel);
+    border-top: 1px solid #000;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  #reglerbereich { display: block; }
+  #pult.eingeklappt #reglerbereich,
+  #pult.eingeklappt #protokoll { display: none; }
+
+  /* Bei sehr flachen Fenstern entfällt Beiwerk ohne Informationswert. */
+  @media (max-height: 560px) {
+    .eyebrow { display: none; }
+    .achsentitel { display: none; }
+  }
+
+  .aktionen {
+    display: flex; flex-wrap: wrap; gap: calc(8px * var(--s)); align-items: center;
+    padding: calc(11px * var(--s)) 18px;
+    border-bottom: 1px solid rgba(0,0,0,.35);
+    position: sticky; top: 0; background: var(--panel); z-index: 3;
+  }
+
+  button {
+    white-space: nowrap; flex: none;
+    font-family: var(--f-display); font-size: max(10px, calc(14px * var(--fs))); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--terrain-deep);
+    background: var(--ochre); border: none; border-radius: 2px;
+    padding: calc(9px * var(--s)) calc(18px * var(--s));
+    min-height: max(22px, calc(40px * var(--s)));
+    cursor: pointer; touch-action: manipulation;
+  }
+  button.sekundaer {
+    background: transparent; color: var(--chalk);
+    box-shadow: inset 0 0 0 1px var(--steel-dim); padding: calc(9px * var(--s)) calc(13px * var(--s));
+  }
+  button:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+  button:active { transform: translateY(1px); }
+
+  .gruppe { border-bottom: 1px solid rgba(0,0,0,.3); padding: calc(7px * var(--s)) 18px calc(8px * var(--s)); }
+  .gruppe > h2 {
+    font-family: var(--f-mono); font-size: 10px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--ochre);
+    margin: 0 0 1px; font-weight: 400;
+  }
+  .regler { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0 24px; }
+
+  .regel {
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: baseline; padding: 1px 0 0;
+    line-height: 1.15;
+  }
+  .regel label { font-size: max(9.5px, calc(12px * var(--fs))); color: #C9C6BD; }
+  .regel label .franz {
+    font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--chalk-dim); margin-left: 6px;
+  }
+  .regel output {
+    font-family: var(--f-mono); font-size: max(9.5px, calc(12px * var(--fs))); font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--ochre);
+  }
+  .regel input { grid-column: 1 / -1; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: max(14px, calc(22px * var(--s))); background: transparent; margin: 0; touch-action: pan-y;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 2px; background: var(--steel-dim); }
+  input[type=range]::-moz-range-track { height: 2px; background: var(--steel-dim); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; margin-top: -8px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, #E6EDF1, var(--steel) 55%, #63707A); border: none; cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, #E6EDF1, var(--steel) 55%, #63707A); border: none; cursor: pointer;
+  }
+  input[type=range]:focus-visible { outline: 2px solid var(--steel); outline-offset: 4px; }
+  /* Auf Fingerbedienung bleibt die Grifffläche groß, obwohl die Reihen enger stehen. */
+  @media (pointer: coarse) {
+    input[type=range] { height: 30px; }
+    input[type=range]::-webkit-slider-thumb { width: 22px; height: 22px; margin-top: -10px; }
+    input[type=range]::-moz-range-thumb { width: 22px; height: 22px; }
+    .regel { padding: 3px 0 0; }
+  }
+
+  /* Bodenauswahl */
+  #boeden { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0 2px; }
+  .boden {
+    font-family: var(--f-body); font-size: 12px; letter-spacing: 0; text-transform: none;
+    background: transparent; color: #C9C6BD;
+    box-shadow: inset 0 0 0 1px #4A514B;
+    border-radius: 999px; padding: calc(6px * var(--s)) calc(12px * var(--s));
+    min-height: max(22px, calc(34px * var(--s)));
+  }
+  .boden[aria-pressed="true"] {
+    background: var(--ochre); color: var(--terrain-deep);
+    box-shadow: none; font-weight: 500;
+  }
+  .gruppe > h2 { display: flex; align-items: center; gap: 10px; }
+  .hilfe {
+    font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .14em;
+    text-transform: uppercase; font-weight: 400;
+    background: transparent; color: var(--chalk-dim);
+    box-shadow: inset 0 0 0 1px #4A514B; border-radius: 999px;
+    padding: 3px 9px; min-height: 0; line-height: 1.5;
+  }
+  .hilfe[aria-expanded="true"] { color: var(--terrain-deep); background: var(--chalk-dim); box-shadow: none; }
+
+  #erklaerung, #erklaerung-hand, #erklaerung-serie, #erklaerung-schuss { display: none; margin: 4px 0 8px; }
+  #erklaerung.offen, #erklaerung-hand.offen, #erklaerung-serie.offen,
+  #erklaerung-schuss.offen { display: block; }
+  #schussschalter { margin: 4px 0 2px; }
+  #erklaerung .karte, #erklaerung-hand .karte, #erklaerung-serie .karte, #erklaerung-schuss .karte {
+    border-left: 2px solid var(--ochre);
+    padding: 0 0 0 11px; margin: 0 0 9px;
+  }
+  #erklaerung .karte:last-child, #erklaerung-hand .karte:last-child, #erklaerung-serie .karte:last-child, #erklaerung-schuss .karte:last-child { margin-bottom: 0; }
+  #erklaerung h3, #erklaerung-hand h3, #erklaerung-serie h3, #erklaerung-schuss h3 {
+    margin: 0 0 2px; font-size: 12px; font-weight: 500; color: var(--chalk);
+  }
+  #erklaerung h3 code, #erklaerung-hand h3 code, #erklaerung-serie h3 code, #erklaerung-schuss h3 code {
+    font-family: var(--f-mono); font-size: 11px; color: var(--ochre); margin-left: 6px;
+  }
+  #erklaerung p, #erklaerung-hand p, #erklaerung-serie p, #erklaerung-schuss p { margin: 0 0 3px; font-size: 11.5px; line-height: 1.5; color: var(--chalk-dim); }
+  #erklaerung .deutung, #erklaerung-hand .deutung, #erklaerung-serie .deutung, #erklaerung-schuss .deutung {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .04em;
+    color: var(--vergleich);
+  }
+  #erklaerung .spanne, #erklaerung-hand .spanne, #erklaerung-serie .spanne, #erklaerung-schuss .spanne {
+    font-family: var(--f-mono); font-size: 10px; letter-spacing: .04em; color: #6E7A6E;
+  }
+
+  #boden-hinweis {
+    font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--chalk-dim); margin: 6px 0 0;
+  }
+
+  #vergleich {
+    padding: calc(7px * var(--s)) 18px calc(9px * var(--s));
+    border-bottom: 1px solid rgba(0,0,0,.3);
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+  }
+  #vergleich[hidden] { display: none; }
+  #vergleich table { border-collapse: collapse; width: 100%; min-width: 620px; }
+  #vergleich th, #vergleich td {
+    text-align: right; padding: 3px 8px 3px 0;
+    font-family: var(--f-mono); font-variant-numeric: tabular-nums;
+    font-size: max(9.5px, calc(11px * var(--fs)));
+    white-space: nowrap;
+  }
+  #vergleich th {
+    font-weight: 400; font-size: max(8px, calc(9.5px * var(--fs)));
+    letter-spacing: .1em; text-transform: uppercase; color: var(--chalk-dim);
+    border-bottom: 1px solid rgba(0,0,0,.35);
+  }
+  #vergleich td { color: #C9C6BD; border-bottom: 1px solid rgba(0,0,0,.18); }
+  #vergleich th:first-child, #vergleich td:first-child { text-align: left; }
+  #vergleich .beschr {
+    text-align: left; font-family: var(--f-body); white-space: normal;
+    color: var(--chalk-dim); max-width: 30ch;
+  }
+  #vergleich .abw { color: var(--ochre); }
+  #vergleich tr.jetzt td { color: var(--chalk); font-weight: 600; }
+  #vergleich .punkt {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 6px; vertical-align: baseline;
+  }
+  #vergleich .punkt.hell { background: #D6E2E8; }
+  #vergleich .weg {
+    background: transparent; color: var(--chalk-dim);
+    box-shadow: inset 0 0 0 1px #4A514B; border-radius: 3px;
+    font-family: var(--f-mono); font-size: 12px; letter-spacing: 0;
+    padding: 0; width: 20px; min-height: 20px; line-height: 1;
+  }
+  #vergleich .weg:hover { color: var(--chalk); box-shadow: inset 0 0 0 1px var(--steel-dim); }
+  #vergleich .hinweis {
+    margin: 5px 0 0; font-family: var(--f-mono);
+    font-size: max(8px, calc(9.5px * var(--fs)));
+    letter-spacing: .06em; color: #6E7A6E;
+  }
+  #pult.eingeklappt #vergleich { display: none; }
+
+  #protokoll {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(122px, 1fr));
+    border-bottom: 1px solid rgba(0,0,0,.3);
+  }
+  .messwert { padding: calc(8px * var(--s)) 18px calc(9px * var(--s)); border-right: 1px solid rgba(0,0,0,.25); }
+  .messwert dt {
+    font-family: var(--f-mono); font-size: max(7.5px, calc(9.5px * var(--fs))); letter-spacing: .14em;
+    text-transform: uppercase; color: var(--chalk-dim); margin: 0 0 2px;
+  }
+  .messwert dd {
+    margin: 0; font-family: var(--f-display); font-size: max(12px, calc(18px * var(--fs))); font-weight: 500;
+    letter-spacing: .02em; font-variant-numeric: tabular-nums;
+  }
+  .messwert dd span { font-size: 12px; color: var(--chalk-dim); letter-spacing: .06em; }
+  .delta {
+    margin: 2px 0 0; min-height: calc(12px * var(--s));
+    font-family: var(--f-mono); font-size: 10px; font-variant-numeric: tabular-nums;
+    color: var(--vergleich); letter-spacing: .04em;
+  }
+  button.merken[aria-pressed="true"] {
+    background: var(--vergleich); color: var(--terrain-deep); box-shadow: none;
+  }
+  #m-treffer dd { color: var(--ochre); }
+  .messwert.schuss[hidden] { display: none; }
+  #m-schuss dd, #m-schuss { color: var(--abwurf); }
+  #m-schuss.treffer { color: #8FC48A; }
+
+  .fussnote { padding: 12px 18px 16px; font-size: 11px; line-height: 1.55; color: var(--chalk-dim); margin: 0; }
+  .fussnote b { color: #C9C6BD; font-weight: 500; }
+
+  @media (max-width: 560px) {
+    header { padding: 10px 14px 8px; gap: 10px; flex-wrap: wrap; }
+    h1 { font-size: 18px; }
+    .aktionen, .gruppe, .messwert, .fussnote { padding-left: 14px; padding-right: 14px; }
+    .messwert dd { font-size: 18px; }
+    #pult { max-height: 60vh; }
+  }
+</style>
+
+<header>
+  <h1>Kugel<span class="accent">wurf</span></h1>
+  <span class="eyebrow" id="kopfzeile">700 g · 74 mm · Feiner Splitt</span>
+</header>
+
+<div id="piste">
+  <canvas id="platz"></canvas>
+  <div id="telemetrie">
+    <span>t <b id="t-zeit">0.00</b> s</span>
+    <span>x <b id="t-weite">0.00</b> m</span>
+    <span>h <b id="t-hoehe">0.00</b> m</span>
+    <span>v <b id="t-tempo">0.0</b> m/s</span>
+    <span>z <b id="t-seite">0.00</b> m</span>
+    <span class="phase" id="t-phase">bereit</span>
+    <span class="ergebnis">Ende <b id="t-ende">0.00</b> m</span>
+    <span class="ergebnis">zum Ziel <b id="t-ziel">0.00</b> m</span>
+    <span id="streu-zeile" hidden></span>
+  </div>
+  <div id="hinweis-hoehe" hidden>Bogen über dem Ausschnitt</div>
+  <div id="fehlerleiste" hidden></div>
+  <pre id="diagnose" hidden></pre>
+</div>
+
+<div id="draufsicht-box">
+  <canvas id="oben"></canvas>
+  <span class="achsentitel">Draufsicht</span>
+</div>
+
+<div id="pult">
+  <div class="aktionen">
+    <button id="werfen">Werfen</button>
+    <button id="tempo" class="sekundaer" aria-live="polite">Tempo 1×</button>
+    <button id="streuung" class="sekundaer streu" aria-pressed="false">Serie simulieren</button>
+    <button id="merken" class="sekundaer merken" aria-pressed="false">Wurf merken</button>
+    <button id="leeren" class="sekundaer" hidden>Vergleich leeren</button>
+    <button id="zuruecksetzen" class="sekundaer">Standardwerte</button>
+    <button id="einklappen" class="sekundaer" aria-pressed="false">Nur Spielfeld</button>
+    <button id="diag-knopf" class="sekundaer" aria-pressed="false" title="Zeigt Messwerte zur Darstellung">Diagnose</button>
+  </div>
+
+  <dl id="protokoll">
+    <div class="messwert"><dt>Erster Aufprall</dt><dd id="m-donnee">–</dd><p class="delta" id="d-donnee"></p></div>
+    <div class="messwert"><dt>Endposition</dt><dd id="m-ende">–</dd><p class="delta" id="d-ende"></p></div>
+    <div class="messwert"><dt>Rollweg</dt><dd id="m-rollen">–</dd><p class="delta" id="d-rollen"></p></div>
+    <div class="messwert"><dt>Sprünge</dt><dd id="m-huepfer">–</dd><p class="delta" id="d-huepfer"></p></div>
+    <div class="messwert"><dt>Einschlagtiefe</dt><dd id="m-krater">–</dd><p class="delta" id="d-krater"></p></div>
+    <div class="messwert"><dt>Seitenablage</dt><dd id="m-seite">–</dd><p class="delta" id="d-seite"></p></div>
+    <div class="messwert"><dt>Dauer</dt><dd id="m-dauer">–</dd><p class="delta" id="d-dauer"></p></div>
+    <div class="messwert" id="m-treffer"><dt>Abstand zum Ziel</dt><dd id="m-abstand">–</dd><p class="delta" id="d-abstand"></p></div>
+    <div class="messwert schuss" id="m-schuss-feld"><dt>Schuss</dt><dd id="m-schuss">–</dd><p class="delta" id="d-schuss"></p></div>
+    <div class="messwert schuss" id="m-zk-feld"><dt>Zielkugel bewegt</dt><dd id="m-zk">–</dd><p class="delta" id="d-zk"></p></div>
+    <div class="messwert schuss" id="m-co-feld"><dt>Cochonnet bewegt</dt><dd id="m-co">–</dd><p class="delta" id="d-co"></p></div>
+  </dl>
+
+  <div id="vergleich" hidden></div>
+
+  <div id="reglerbereich">
+  <section class="gruppe">
+    <h2>Wurf</h2>
+    <div class="regler">
+      <div class="regel">
+        <label for="v0">Abwurfgeschwindigkeit</label><output id="v0-wert"></output>
+        <input type="range" id="v0" min="3" max="12" step="0.1" value="6.8">
+      </div>
+      <div class="regel">
+        <label for="winkel">Abwurfwinkel <span class="franz">La portée</span></label><output id="winkel-wert"></output>
+        <input type="range" id="winkel" min="15" max="75" step="1" value="42">
+      </div>
+      <div class="regel">
+        <label for="y0">Abwurfhöhe</label><output id="y0-wert"></output>
+        <input type="range" id="y0" min="0.3" max="1.8" step="0.05" value="1.40">
+      </div>
+      <div class="regel">
+        <label for="ziel">Lage des Zielballs <span class="franz">Cochonnet</span></label><output id="ziel-wert"></output>
+        <input type="range" id="ziel" min="4" max="12" step="0.1" value="8">
+      </div>
+    </div>
+  </section>
+
+  <section class="gruppe">
+    <h2>Kugel</h2>
+    <div class="regler">
+      <div class="regel">
+        <label for="masse">Masse</label><output id="masse-wert"></output>
+        <input type="range" id="masse" min="600" max="850" step="5" value="700">
+      </div>
+      <div class="regel">
+        <label for="durchmesser">Durchmesser</label><output id="durchmesser-wert"></output>
+        <input type="range" id="durchmesser" min="70" max="80" step="0.5" value="74">
+      </div>
+    </div>
+  </section>
+
+  <section class="gruppe">
+    <h2>Schuss <button type="button" class="hilfe" id="hilfe-schuss" aria-expanded="false" aria-controls="erklaerung-schuss">Wie wird gerechnet?</button></h2>
+    <div id="schussschalter">
+      <button type="button" class="boden" id="zielkugel" aria-pressed="false">Zielkugel im Spiel</button>
+      <button type="button" class="boden" id="cochonnetkoerper" aria-pressed="false">Cochonnet beweglich</button>
+    </div>
+    <div class="regler">
+      <div class="regel">
+        <label for="zkx">Zielkugel Entfernung</label><output id="zkx-wert"></output>
+        <input type="range" id="zkx" min="3" max="13" step="0.05" value="8">
+      </div>
+      <div class="regel">
+        <label for="zkz">Zielkugel seitlich</label><output id="zkz-wert"></output>
+        <input type="range" id="zkz" min="-1" max="1" step="0.01" value="0">
+      </div>
+      <div class="regel">
+        <label for="richtung">Zielrichtung <span class="franz">Azimut</span></label><output id="richtung-wert"></output>
+        <input type="range" id="richtung" min="-10" max="10" step="0.1" value="0">
+      </div>
+      <div class="regel">
+        <label for="zkm">Masse der Zielkugel</label><output id="zkm-wert"></output>
+        <input type="range" id="zkm" min="600" max="850" step="5" value="700">
+      </div>
+      <div class="regel">
+        <label for="zkd">Durchmesser der Zielkugel</label><output id="zkd-wert"></output>
+        <input type="range" id="zkd" min="70" max="80" step="0.5" value="74">
+      </div>
+      <div class="regel">
+        <label for="cm">Masse des Cochonnets</label><output id="cm-wert"></output>
+        <input type="range" id="cm" min="10" max="18" step="0.5" value="12">
+      </div>
+      <div class="regel">
+        <label for="cd">Durchmesser des Cochonnets</label><output id="cd-wert"></output>
+        <input type="range" id="cd" min="29" max="31" step="0.5" value="30">
+      </div>
+    </div>
+    <div id="erklaerung-schuss">
+      <div class="karte">
+        <h3>Der Stoß auf die Kugel</h3>
+        <p>Beim Berühren wirkt ein Impuls entlang der Mittelpunktsverbindung:
+          J = (1+e)·u<sub>n</sub>/(1/m₁+1/m₂), mit e = 0,75 für Stahl auf Stahl. Weil der
+          Zeitschritt 2 ms beträgt und die Kugel darin 2 cm zurücklegt, wird der
+          Berührzeitpunkt innerhalb des Schritts zurückgerechnet — sonst stimmte die
+          Stoßnormale nicht.</p>
+        <p>Über Treffen oder Vorbei entscheiden Millimeter: bei 74-mm-Kugeln genügen
+          7,4 cm seitlicher Fehler. Ein einzelner Schuss sagt darum wenig — erst die Serie
+          liefert eine Trefferquote.</p>
+        <p>Der <em>Carreau</em> — die Zielkugel fliegt weg, der Schütze bleibt an ihrem
+          Platz — entsteht bei zentralem Treffer aus dem Tangentialanteil des Stoßes und
+          gilt hier als erreicht, wenn die Zielkugel über 0,5 m wandert und der Schütze
+          näher als 0,5 m an ihrem alten Platz liegen bleibt.</p>
+        <p class="spanne">Nicht enthalten: Anspielen weiterer Kugeln, Drehen der Zielkugel in ihrer Mulde</p>
+        <p class="deutung" id="deutung-schuss"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="gruppe">
+    <h2>Serie <button type="button" class="hilfe" id="hilfe-serie" aria-expanded="false" aria-controls="erklaerung-serie">Wozu?</button></h2>
+    <div class="regler">
+      <div class="regel">
+        <label for="anzahl">Anzahl Würfe</label><output id="anzahl-wert"></output>
+        <input type="range" id="anzahl" min="20" max="500" step="10" value="100">
+      </div>
+      <div class="regel">
+        <label for="streuV">Streuung Geschwindigkeit <span class="franz">Werfer</span></label><output id="streuV-wert"></output>
+        <input type="range" id="streuV" min="0" max="0.6" step="0.01" value="0.15">
+      </div>
+      <div class="regel">
+        <label for="streuW">Streuung Abwurfwinkel <span class="franz">Werfer</span></label><output id="streuW-wert"></output>
+        <input type="range" id="streuW" min="0" max="8" step="0.1" value="1.0">
+      </div>
+    </div>
+    <div id="erklaerung-serie">
+      <div class="karte">
+        <h3>Wozu eine Serie?</h3>
+        <p>Ein einzelner Wurf sagt wenig. Die Serie rechnet dieselbe Einstellung viele Male
+          durch und zeigt, wie weit die Ergebnisse auseinanderliegen. Zwei Quellen der
+          Streuung wirken zusammen: der Untergrund, dessen Körner die Kugel bei jedem
+          Aufprall anders ablenken, und der Werfer, der nie zweimal exakt gleich löst.</p>
+        <p>Die beiden Streuungsregler sind Standardabweichungen. ± 0,15 m/s und ± 1,0° sind
+          Werte eines geübten Spielers; ein Anfänger liegt eher bei ± 0,4 m/s und ± 3°.
+          Auf null gestellt bleibt allein der Untergrund als Ursache übrig.</p>
+        <p class="deutung" id="deutung-serie"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="gruppe">
+    <h2>Hand <button type="button" class="hilfe" id="hilfe-hand" aria-expanded="false" aria-controls="erklaerung-hand">Was bewirkt das?</button></h2>
+    <div class="regler">
+      <div class="regel">
+        <label for="drall">Drall beim Abwurf <span class="franz">Rétro</span></label><output id="drall-wert"></output>
+        <input type="range" id="drall" min="0" max="20" step="0.5" value="0">
+      </div>
+      <div class="regel">
+        <label for="verdrehung">Verdrehung der Wurfhand</label><output id="verdrehung-wert"></output>
+        <input type="range" id="verdrehung" min="-90" max="90" step="5" value="0">
+      </div>
+    </div>
+    <div id="erklaerung-hand">
+      <div class="karte">
+        <h3>Drallachse und Handhaltung</h3>
+        <p>Die Boule wird mit dem Handrücken nach oben gelöst; beim Abrollen über die Finger
+          entsteht Rückwärtsdrall. Verdrehst du das Handgelenk, kippt die Drallachse um die
+          Flugrichtung: bei 0° liegt sie quer (reiner Rückwärtsdrall), bei ±90° senkrecht
+          (reiner Seitendrall, im Boule „effet" genannt). Dazwischen mischt sich beides.</p>
+        <p>Im Flug bleibt der Drall fast wirkungslos — der Magnus-Auftrieb einer 700-g-Stahlkugel
+          bewegt bei 10 U/s nur wenige Zentimeter. Er wirkt beim <em>Aufprall</em>: der Kontaktpunkt
+          gleitet, und die Reibung wandelt Drall in Geschwindigkeit um. Rückwärtsdrall bremst,
+          Seitendrall lenkt ab.</p>
+        <p class="spanne">Übliche Werte: 0 U/s beim Rollwurf · 6–10 U/s beim Portée · 12–20 U/s beim harten Rétro</p>
+        <p class="deutung" id="deutung-hand"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="gruppe">
+    <h2>Boden <button type="button" class="hilfe" id="hilfe-boden" aria-expanded="false" aria-controls="erklaerung">Was bedeuten die Werte?</button></h2>
+    <div id="boeden" role="group" aria-label="Bodenbeschaffenheit"></div>
+    <p id="boden-hinweis"></p>
+
+    <div id="erklaerung">
+      <div class="karte">
+        <h3>Stoßzahl <code>e</code></h3>
+        <p>Anteil der senkrechten Geschwindigkeit, der den Aufprall übersteht: aus 4 m/s Fallgeschwindigkeit
+          werden bei e = 0,18 noch 0,72 m/s Rücksprung. Sie steuert, wie oft und wie hoch die Kugel dotzt.
+          e = 0 hieße: liegen bleiben. e = 1 hieße: verlustfrei zurückspringen — das gibt es nicht.</p>
+        <p class="spanne">Sand 0,05–0,10 · Schotter 0,12–0,20 · Lehm 0,25–0,30 · Beton 0,40–0,50</p>
+        <p class="deutung" id="deutung-e"></p>
+      </div>
+
+      <div class="karte">
+        <h3>Rollreibung <code>µ</code></h3>
+        <p>Bremst die rollende Kugel mit a = µ·g, also mit µ·9,81 m/s². Bei µ = 0,16 sind das 1,57 m/s²,
+          und aus 2 m/s Rollgeschwindigkeit werden noch 1,27 m Rollweg. Der Wert enthält nicht nur die
+          Reibung, sondern vor allem die Arbeit, die die Kugel beim Verdrängen des Materials vor sich leistet.</p>
+        <p class="spanne">Beton 0,03–0,06 · Lehm 0,10–0,13 · Schotter 0,14–0,22 · tiefer Sand 0,28–0,35</p>
+        <p class="deutung" id="deutung-mu"></p>
+      </div>
+
+      <div class="karte">
+        <h3>Tragfähigkeit <code>p</code></h3>
+        <p>Der Druck, den der Untergrund dem Eindringen entgegensetzt. Aus ½·m·v<sub>y</sub>² = p·π·R·d²
+          folgt die Einschlagtiefe d = √(m·v<sub>y</sub>²/(2·π·p·R)). Über sie wirkt die Kugelmasse:
+          je tiefer der Krater, desto weniger Energie bleibt für den Rücksprung. Ein weicher Platz
+          verschluckt eine schwere Kugel, ein harter macht den Massenunterschied fast bedeutungslos.</p>
+        <p class="spanne">tiefer Sand 150 kPa · Schotter 220 kPa · Splitt 350 kPa · Lehm 900 kPa · Beton 15 MPa</p>
+        <p class="deutung" id="deutung-haerte"></p>
+      </div>
+
+      <div class="karte">
+        <h3>Korngröße <code>r</code></h3>
+        <p>Der Radius der Steine, auf die die Kugel trifft. Er entscheidet über das seitliche
+          Wegspringen: die Kontaktnormale steht nicht senkrecht, sondern um bis zu
+          θ<sub>max</sub> = arcsin(r/(R+r)) gekippt, und der Abprall erfolgt um diese gekippte Achse.
+          Beim anschließenden Rollen dreht fortlaufender Kornkontakt den Kurs zusätzlich weiter.</p>
+        <p class="spanne">Beton 0,1 mm · Lehm 0,3 mm · Sand 0,4–0,5 mm · Splitt 2–3 mm · Schotter 8–12 mm</p>
+        <p class="deutung" id="deutung-korn"></p>
+      </div>
+
+      <div class="karte">
+        <h3>Wie die Masse wirkt</h3>
+        <p>Im reinen Wurfparabel-Modell kürzt sie sich heraus. Hier nicht, weil drei massenabhängige
+          Effekte mitgerechnet werden: der Luftwiderstand verzögert eine leichte Kugel stärker
+          (a = ½·ρ·c<sub>w</sub>·A·v²/m), eine schwere Kugel schlägt tiefer ein und verliert dabei mehr
+          Sprungenergie, und die Rollreibung wächst mit der Einsinktiefe, also näherungsweise mit √m.
+          Stoßzahl und Rollreibung sind auf 700 g und 74 mm kalibriert.</p>
+        <p class="spanne">Nicht enthalten: Drall, Effet, Verschieben liegender Steine</p>
+      </div>
+    </div>
+    <div class="regler">
+      <div class="regel">
+        <label for="e">Stoßzahl</label><output id="e-wert"></output>
+        <input type="range" id="e" min="0.02" max="0.6" step="0.01" value="0.18">
+      </div>
+      <div class="regel">
+        <label for="mu">Rollreibung</label><output id="mu-wert"></output>
+        <input type="range" id="mu" min="0.02" max="0.35" step="0.01" value="0.16">
+      </div>
+      <div class="regel">
+        <label for="haerte">Tragfähigkeit <span class="franz">Einsinken</span></label><output id="haerte-wert"></output>
+        <input type="range" id="haerte" min="1.8" max="4.3" step="0.01" value="2.544">
+      </div>
+      <div class="regel">
+        <label for="korn">Korngröße <span class="franz">Rauheit</span></label><output id="korn-wert"></output>
+        <input type="range" id="korn" min="0.1" max="20" step="0.1" value="2.5">
+      </div>
+    </div>
+  </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  if (!window.requestAnimationFrame) {
+    window.requestAnimationFrame = function (f) { return setTimeout(function () { f(Date.now()); }, 16); };
+  }
+
+  var G = 9.81, DT = 0.002, MAX_T = 25;
+  var RHO = 1.204, CW = 0.47;          /* Luft bei 20 °C, Kugel */
+  var M_REF = 0.700, R_REF = 0.037;    /* Kalibrierpunkt: 700 g, 74 mm */
+  var R_ZIEL = 0.015;
+
+  var BOEDEN = [
+    { name: "Grober Schotter", korngroesse: 10, e: 0.14, mu: 0.20, p: 220,
+      stil: { basis: "#37342D", korn: ["#8E8579", "#6A6358", "#A79C8C"], form: "kantig",
+              dichte: 0.75, groesse: [1.6, 3.4], alpha: [0.35, 0.85], linie: "#9A9184" } },
+    { name: "Feiner Splitt", korngroesse: 2.5,   e: 0.18, mu: 0.16, p: 350,
+      stil: { basis: "#3A362F", korn: ["#7E766B", "#5F5A50", "#948B7D"], form: "rund",
+              dichte: 1.8, groesse: [0.5, 1.7], alpha: [0.2, 0.6], linie: "#9A9184" } },
+    { name: "Harter Sand", korngroesse: 0.5,     e: 0.22, mu: 0.14, p: 500,
+      stil: { basis: "#4E4531", korn: ["#8F805C", "#A2946E"], form: "rund",
+              dichte: 2.6, groesse: [0.4, 1.0], alpha: [0.18, 0.5], linie: "#B0A183" } },
+    { name: "Tiefer Sand", korngroesse: 0.4,     e: 0.07, mu: 0.30, p: 150,
+      stil: { basis: "#5A4E35", korn: ["#A08C61", "#B7A47A"], form: "rund",
+              dichte: 2.2, groesse: [0.5, 1.3], alpha: [0.2, 0.55], linie: "#C6B48B",
+              streifen: "welle", streifenFarbe: "rgba(198,180,139,.18)" } },
+    { name: "Gewalzter Lehm", korngroesse: 0.3,  e: 0.28, mu: 0.11, p: 900,
+      stil: { basis: "#59392C", korn: ["#7A4E3A", "#8C5C44"], form: "rund",
+              dichte: 0.45, groesse: [0.4, 1.1], alpha: [0.15, 0.45], linie: "#9A6A50",
+              streifen: "walze", streifenFarbe: "rgba(154,106,80,.16)" } },
+    { name: "Kurzer Rasen", korngroesse: 3,    e: 0.20, mu: 0.26, p: 180,
+      stil: { basis: "#2E3D23", korn: ["#4A6134", "#3C5029"], form: "halm",
+              dichte: 1.4, groesse: [0.6, 1.4], alpha: [0.3, 0.7], linie: null } },
+    { name: "Beton / Halle", korngroesse: 0.1,   e: 0.45, mu: 0.05, p: 15000,
+      stil: { basis: "#45494A", korn: ["#52585A", "#3C4142"], form: "rund",
+              dichte: 0.5, groesse: [0.6, 2.0], alpha: [0.25, 0.6], linie: "#8B9497",
+              streifen: "fuge", streifenFarbe: "rgba(25,28,25,.55)" } }
+  ];
+  var STANDARD_BODEN = 1;
+
+  var STANDARD = { v0: 6.8, winkel: 42, y0: 1.40, ziel: 8, masse: 700, durchmesser: 74,
+                   drall: 0, verdrehung: 0, anzahl: 100, streuV: 0.15, streuW: 1.0,
+                   zkx: 8, zkz: 0, zkm: 700, zkd: 74, richtung: 0, cm: 12, cd: 30 };
+
+  var el = function (id) { return document.getElementById(id); };
+
+  /* Manche ältere Android-WebViews und Safari-Versionen kennen ctx.ellipse nicht. */
+  var kannEllipse = typeof CanvasRenderingContext2D !== "undefined" &&
+                    typeof CanvasRenderingContext2D.prototype.ellipse === "function";
+
+  function ellipseBogen(cx, cy, rx, ry) {
+    if (kannEllipse) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, 6.2832);
+      return;
+    }
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, ry / rx);
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, 6.2832);
+    ctx.restore();
+  }
+
+  var letzterFehler = "";
+
+  function meldeFehler(e, wo) {
+    letzterFehler = (wo ? wo + ": " : "") + (e && e.message ? e.message : String(e));
+    var leiste = el("fehlerleiste");
+    if (leiste) {
+      leiste.hidden = false;
+      leiste.textContent = "Darstellungsfehler — " + letzterFehler +
+        "  ·  Bitte diesen Text melden. Die Bedienung läuft weiter.";
+    }
+    if (window.console && console.error) console.error(e);
+  }
+
+  window.addEventListener("error", function (ev) {
+    meldeFehler(ev.error || ev.message, "global");
+  });
+
+  var jetztMs = (window.performance && window.performance.now)
+    ? function () { return window.performance.now(); }
+    : function () { return Date.now(); };
+  var canvas = el("platz");
+  var ctxHaupt = canvas.getContext("2d");
+  var ctx = ctxHaupt;                       /* Zeichenziel, wird für den Hintergrund umgehängt */
+
+  /* Boden, Korn, Maßband, Abwurfring, Zielball und Vergleichswurf ändern sich während
+     der Animation nicht. Sie werden einmal auf eine zweite Leinwand gezeichnet und
+     pro Bild nur noch kopiert — sonst kostet jedes Bild tausende Einzelbefehle. */
+  var hgLeinwand = document.createElement("canvas");
+  var hgCtx = hgLeinwand.getContext("2d");
+  var hgGueltig = false;
+
+  var obenLeinwand = el("oben");
+  var ctxOben = obenLeinwand.getContext("2d");
+  var sichtOben = null;                     /* eigene Abbildung für die Draufsicht */
+  var saatWurf = 1;                         /* Zufallskeim des aktuellen Wurfs */
+  var streuung = null;                      /* Ergebnis der Streurechnung */
+  var streuN = 100;
+  var zielkugelAn = false;
+  var cochonnetAn = false;
+
+  var BASIS_X = 15.0;                  /* fester Maßstab: 15 m Piste über die Fensterbreite */
+  var bahn = null, view = null, kies = [], halme = [];
+  var merkliste = [];                  /* gemerkte Vergleichswürfe */
+  var MERK_MAX = 6;
+  var FARBEN = ["#7FA8A2", "#C98A5B", "#9B8EC4", "#A8B562", "#C77E8E", "#5F93B8"];
+  var stilBoden = STANDARD_BODEN;      /* bestimmt nur das Aussehen, bleibt beim Nachjustieren stehen */
+  var laeuft = false, startzeit = 0, tempo = 1, frameIndex = 0;
+  var aktiverBoden = STANDARD_BODEN;
+  var pRef = BOEDEN[STANDARD_BODEN].p;   /* Härte, auf die e und µ kalibriert sind */
+  var sanft = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  /* ---------- 1. Physik ---------- */
+
+  function groessteMerk(feld) {
+    var m = 0;
+    for (var i = 0; i < merkliste.length; i++) {
+      if (merkliste[i][feld] > m) m = merkliste[i][feld];
+    }
+    return m;
+  }
+
+  /* Wiederholbarer Zufall: gleicher Keim, gleicher Wurf. */
+  function saatQuelle(keim) {
+    var z = (keim | 0) || 1;
+    return function () {
+      z = (z * 1103515245 + 12345) % 2147483648;
+      if (z < 0) z += 2147483648;
+      return z / 2147483648;
+    };
+  }
+
+  function normalverteilt(rnd) {          /* Box-Muller */
+    var u = Math.max(1e-9, rnd()), v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.2832 * v);
+  }
+
+  function kratertiefe(m, vy, pPa, R) {
+    /* Arbeit gegen den Eindringwiderstand: ½mv² = p·π·R·d²  →  d = √(m v²/(2πpR)) */
+    return Math.sqrt(m * vy * vy / (2 * Math.PI * pPa * R));
+  }
+
+  var E_KUGEL = 0.75;                     /* Stoßzahl Stahl auf Stahl */
+  var MU_KUGEL = 0.16;                    /* Gleitreibung im Kugel-Kugel-Kontakt */
+  var MU_STOSS = 0.45;                    /* Gleitreibung im Bodenkontakt */
+  /* Oberhalb von 3 m/s rollt eine Kugel nicht mehr sauber ab, sondern hüpft und
+     pflügt: jeder Kornkontakt kostet Energie. Die Zusatzbremse wächst quadratisch
+     und greift erst über der Schwelle, damit die Kalibrierung des Legewurfs
+     (Auslauf ab etwa 2 m/s) unberührt bleibt. */
+  var V_PFLUG = 3.0, K_PFLUG = 0.5;
+
+  function neuerKoerper(p, o) {
+    var R = o.d / 2;
+    var k = {
+      rolle: o.rolle,
+      x: o.x, y: o.y, z: o.z,
+      px: o.x, py: o.y, pz: o.z,          /* Lage vor dem Schritt, für den Stoßzeitpunkt */
+      vx: o.vx, vy: o.vy, vz: o.vz,
+      wx: o.wx, wy: o.wy, wz: o.wz,
+      bx: 0, bz: 0,                        /* Schattendrall, siehe Bodenkontakt */
+      m: o.m, R: R, A: Math.PI * R * R,
+      zustand: o.zustand, dreh: 0, hMax: o.y,
+      startX: o.x, startZ: o.z,
+      aufpralle: [], tiefen: [], spur: null
+    };
+    k.kLuft = 0.5 * RHO * CW * k.A / k.m;
+    var rKorn = p.korn / 1000;
+    /* Rollwiderstand: die kalibrierte Bodenkennzahl, korrigiert um Masse und Radius.
+       Nach unten begrenzt ihn die Bodentextur — jede Kugel muss über das Korn
+       hinweg, und dieser Anteil geht mit r/R. Für eine Boule bindet die Schranke
+       nie, für ein Cochonnet mit halbem Radius sehr wohl. */
+    /* Der Rollwiderstand hängt nur schwach von der Masse ab — physikalisch ist er
+       im Kern Hebelarm durch Radius. Die frühere Wurzel bildet den Unterschied
+       zwischen 600 und 850 g richtig ab, bricht aber für ein 12-g-Cochonnet auf ein
+       Achtel ein. Der lineare Ansatz trifft den Boule-Bereich auf drei Stellen
+       genau und bleibt für leichte Körper gutmütig. */
+    var mFaktor = Math.max(0.4, 1 + 0.5 * (k.m / M_REF - 1));
+    k.muEff = Math.max(p.mu * mFaktor * Math.sqrt(R_REF / R),
+                       0.7 * rKorn / R);
+    k.sinMax = rKorn / (R + rKorn);
+    k.psi = 0.09 * Math.sqrt(p.korn);
+    return k;
+  }
+
+  /* --- Bodenkontakt eines einzelnen Körpers --------------------------------- */
+  function bodenkontakt(k, p, rnd) {
+    var R = k.R, vyIn = Math.abs(k.vy);
+    k.aufpralle.push({ x: k.x, z: k.z });
+
+    var pPa = p.haerte * 1000, pRefPa = p.pRef * 1000;
+    var dRel    = Math.min(0.90, kratertiefe(k.m,  vyIn, pPa,    R)     / R);
+    var dRelRef = Math.min(0.90, kratertiefe(M_REF, vyIn, pRefPa, R_REF) / R_REF);
+    k.tiefen.push(dRel * R);
+
+    var eEff = Math.min(0.85, Math.max(0, p.e * (1 - dRel) / (1 - dRelRef)));
+    var fx   = Math.min(0.98, Math.max(0.35, 0.8 * (1 - 0.5 * dRel) / (1 - 0.5 * dRelRef)));
+
+    /* Gekippte Kontaktnormale durch die Korngeometrie */
+    var sinT = k.sinMax * (2 * rnd() - 1) * 0.7 * (1 - 0.6 * dRel);
+    k.vz += (1 + eEff) * vyIn * sinT;
+
+    /* Drall am Kontaktpunkt: Gleitgeschwindigkeit v + ω × (−R·ŷ) */
+    var glx = k.vx + R * k.wz, glz = k.vz - R * k.wx;
+    var gl = Math.sqrt(glx * glx + glz * glz) || 1e-9;
+    var dvS = Math.min(MU_STOSS * (1 + eEff) * vyIn, (2 / 7) * gl);
+    var sxImp = -dvS * glx / gl, szImp = -dvS * glz / gl;
+
+    var b0x = k.vx + R * k.bz, b0z = k.vz - R * k.bx;   /* Bezugsfall ohne Handdrall */
+    var b0 = Math.sqrt(b0x * b0x + b0z * b0z) || 1e-9;
+    var dvB = Math.min(MU_STOSS * (1 + eEff) * vyIn, (2 / 7) * b0);
+    var bxImp = -dvB * b0x / b0, bzImp = -dvB * b0z / b0;
+
+    k.wz += (5 / (2 * R)) * sxImp;  k.wx -= (5 / (2 * R)) * szImp;
+    k.bz += (5 / (2 * R)) * bxImp;  k.bx -= (5 / (2 * R)) * bzImp;
+    k.wy *= (1 - 0.25 * dRel);
+
+    var zusX = sxImp - bxImp, zusZ = szImp - bzImp;
+
+    if (vyIn * eEff < 0.15) {
+      k.zustand = "rollen"; k.vy = 0;
+      k.vx = k.vx * fx * 0.75 + zusX; k.vz = k.vz * fx * 0.75 + zusZ;
+    } else {
+      k.vy = vyIn * eEff;
+      k.vx = k.vx * fx + zusX; k.vz = k.vz * fx + zusZ;
+    }
+  }
+
+  /* --- Ein Zeitschritt für einen Körper ------------------------------------- */
+  function schritt(k, p, rnd) {
+    k.px = k.x; k.py = k.y; k.pz = k.z;
+    if (k.zustand === "still") return;
+
+    k.dreh += k.wz * DT;
+
+    if (k.zustand === "flug") {
+      var v = Math.sqrt(k.vx * k.vx + k.vy * k.vy + k.vz * k.vz);
+      var omB = Math.sqrt(k.wx * k.wx + k.wy * k.wy + k.wz * k.wz);
+      var aMx = 0, aMy = 0, aMz = 0;
+      if (omB > 0.01 && v > 0.1) {
+        var cA = Math.min(0.35, 0.25 * k.R * omB / v);
+        var mx = k.wy * k.vz - k.wz * k.vy;
+        var my = k.wz * k.vx - k.wx * k.vz;
+        var mz = k.wx * k.vy - k.wy * k.vx;
+        var mn = Math.sqrt(mx * mx + my * my + mz * mz);
+        if (mn > 1e-9) {
+          var aM = 0.5 * RHO * cA * k.A * v * v / k.m;
+          aMx = aM * mx / mn; aMy = aM * my / mn; aMz = aM * mz / mn;
+        }
+      }
+      k.vx += (-k.kLuft * v * k.vx + aMx) * DT;
+      k.vy += (-G - k.kLuft * v * k.vy + aMy) * DT;
+      k.vz += (-k.kLuft * v * k.vz + aMz) * DT;
+      k.x += k.vx * DT; k.y += k.vy * DT; k.z += k.vz * DT;
+
+      if (k.y <= 0) { k.y = 0; bodenkontakt(k, p, rnd); }
+
+    } else {
+      var vh = Math.sqrt(k.vx * k.vx + k.vz * k.vz);
+      if (vh <= 0) { k.zustand = "still"; }
+      else {
+        /* Kursrauschen. Der Zufallslauf mit √Weg ist am Legewurf geeicht, wo die
+           Kugel gut einen Meter ausrollt. Über lange, schnelle Strecken — eine
+           angeschossene Kugel oder ein Cochonnet — liefert er unsinnige 25° Drift:
+           eine schnell rollende Kugel wird von einem Korn kaum noch gelenkt, weil
+           sie darüber hinwegsetzt statt sich daran abzustützen. Oberhalb derselben
+           Schwelle wie beim Pflügen sinkt die Lenkwirkung deshalb mit 1/v. */
+        var lenk = vh > V_PFLUG ? V_PFLUG / vh : 1;
+        var dpsi = normalverteilt(rnd) * k.psi * lenk * Math.sqrt(vh * DT);
+        if (Math.abs(k.wy) > 0.05) {
+          /* Dieselbe Dämpfung gilt für die Lenkwirkung des Dralls: die Seitenkraft
+             ist ein Reibungsanteil, und bei hohem Tempo steht davon kaum etwas zum
+             Lenken zur Verfügung. Ohne das zieht ein angeschossenes Cochonnet mit
+             460 rad/s Hochachsendrall einen Bogen über mehrere Meter. */
+          /* Die Krümmung ist a_quer/v und wüchse über alle Grenzen, wenn die Kugel
+             ausrollt. Physikalisch begrenzt sie der zugleich absterbende Drall;
+             hier fängt eine Mindestgeschwindigkeit im Nenner die Singularität ab. */
+          dpsi += lenk * 0.35 * k.muEff * G * Math.tanh(k.R * k.wy / Math.max(vh, 0.2)) /
+                  Math.max(vh, 0.8) * DT;
+          k.wy -= Math.sign(k.wy) * 1.2 * k.muEff * G / k.R * DT;
+          if (Math.abs(k.wy) < 0.05) k.wy = 0;
+        }
+        var c = Math.cos(dpsi), sn = Math.sin(dpsi);
+        var ux = k.vx / vh, uz = k.vz / vh;
+        var pflug = vh > V_PFLUG ? K_PFLUG * (vh - V_PFLUG) * (vh - V_PFLUG) : 0;
+        /* Luftwiderstand wirkt auch am Boden. Für eine Boule bei 2 m/s sind das
+           0,007 m/s² und damit belanglos, für ein 12-g-Cochonnet bei 13 m/s aber
+           knapp 3 m/s². */
+        var luft = k.kLuft * vh * vh;
+        vh = vh - (k.muEff * G + pflug + luft) * DT;
+        if (vh <= 0) { vh = 0; k.zustand = "still"; }
+        k.vx = (ux * c - uz * sn) * vh;
+        k.vz = (ux * sn + uz * c) * vh;
+        k.wz = -k.vx / k.R;
+        k.x += k.vx * DT; k.z += k.vz * DT;
+      }
+      k.y = 0;
+    }
+    if (k.y > k.hMax) k.hMax = k.y;
+  }
+
+  /* --- Stoß zweier Kugeln ---------------------------------------------------
+     Mittelpunkte liegen auf Höhe y + R. Der Stoßzeitpunkt wird innerhalb des
+     Zeitschritts linear interpoliert, sonst würde die Kugel bei 2 ms Schrittweite
+     bis zu 2 cm in das Ziel eintauchen und die Normale verfälschen.            */
+
+  function abstandKugeln(a, b, frag) {
+    var ax = frag ? a.px : a.x, ay = (frag ? a.py : a.y) + a.R, az = frag ? a.pz : a.z;
+    var bx = frag ? b.px : b.x, by = (frag ? b.py : b.y) + b.R, bz = frag ? b.pz : b.z;
+    var dx = bx - ax, dy = by - ay, dz = bz - az;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  function stossKugeln(a, b, p, rnd) {
+    var phaseVorStoss = (a.rolle === "schuetze" ? a.zustand : b.zustand);
+    var summe = a.R + b.R;
+    var d1 = abstandKugeln(a, b, false);
+    if (d1 > summe) return null;
+
+    /* Zeitpunkt der Berührung im Schritt zurückverfolgen */
+    var d0 = abstandKugeln(a, b, true);
+    if (d0 > summe && d0 - d1 > 1e-9) {
+      var f = (d0 - summe) / (d0 - d1);
+      f = Math.max(0, Math.min(1, f));
+      a.x = a.px + (a.x - a.px) * f; a.y = a.py + (a.y - a.py) * f; a.z = a.pz + (a.z - a.pz) * f;
+      b.x = b.px + (b.x - b.px) * f; b.y = b.py + (b.y - b.py) * f; b.z = b.pz + (b.z - b.pz) * f;
+    }
+
+    var nx = (b.x) - (a.x);
+    var ny = (b.y + b.R) - (a.y + a.R);
+    var nz = (b.z) - (a.z);
+    var nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1e-9;
+    nx /= nl; ny /= nl; nz /= nl;
+
+    /* Geschwindigkeit der Materialpunkte im Kontakt */
+    var raX = a.R * nx, raY = a.R * ny, raZ = a.R * nz;
+    var rbX = -b.R * nx, rbY = -b.R * ny, rbZ = -b.R * nz;
+    var uax = a.vx + (a.wy * raZ - a.wz * raY);
+    var uay = a.vy + (a.wz * raX - a.wx * raZ);
+    var uaz = a.vz + (a.wx * raY - a.wy * raX);
+    var ubx = b.vx + (b.wy * rbZ - b.wz * rbY);
+    var uby = b.vy + (b.wz * rbX - b.wx * rbZ);
+    var ubz = b.vz + (b.wx * rbY - b.wy * rbX);
+    var ux = uax - ubx, uy = uay - uby, uz = uaz - ubz;
+
+    var un = ux * nx + uy * ny + uz * nz;
+    if (un <= 0) return null;                       /* entfernen sich bereits */
+
+    var invM = 1 / a.m + 1 / b.m;
+    var Jn = (1 + E_KUGEL) * un / invM;
+
+    a.vx -= Jn * nx / a.m; a.vy -= Jn * ny / a.m; a.vz -= Jn * nz / a.m;
+    b.vx += Jn * nx / b.m; b.vy += Jn * ny / b.m; b.vz += Jn * nz / b.m;
+
+    /* Tangentialanteil: er entscheidet über Carreau oder Weiterlaufen */
+    var tx = ux - un * nx, ty = uy - un * ny, tz = uz - un * nz;
+    var tl = Math.sqrt(tx * tx + ty * ty + tz * tz);
+    if (tl > 1e-6) {
+      tx /= tl; ty /= tl; tz /= tl;
+      var Jt = Math.min(MU_KUGEL * Jn, (2 / 7) * tl / invM);
+      a.vx -= Jt * tx / a.m; a.vy -= Jt * ty / a.m; a.vz -= Jt * tz / a.m;
+      b.vx += Jt * tx / b.m; b.vy += Jt * ty / b.m; b.vz += Jt * tz / b.m;
+
+      var cx = ny * tz - nz * ty, cy = nz * tx - nx * tz, cz = nx * ty - ny * tx;
+      var fa = -5 * Jt / (2 * a.m * a.R), fb = -5 * Jt / (2 * b.m * b.R);
+      a.wx += fa * cx; a.wy += fa * cy; a.wz += fa * cz;
+      b.wx += fb * cx; b.wy += fb * cy; b.wz += fb * cz;
+    }
+
+    /* Zustände nachführen. Die Mittelpunkte liegen unterschiedlich hoch — schon ein
+       zentraler Treffer Boule auf Cochonnet ist deshalb um arcsin((R−r)/(R+r)),
+       also 25°, nach unten geneigt. */
+    [a, b].forEach(function (k) {
+      if (k.y <= 0) {
+        k.y = 0;
+        if (k.vy > 0.15) k.zustand = "flug";
+        else {
+          /* Der abwärts gerichtete Anteil des Stoßes geht in den Boden: die
+             getroffene Kugel wird für den Augenblick des Stoßes zwischen Boule und
+             Untergrund eingeklemmt. Ein Rückprall daraus wäre denkbar, führt im
+             Modell aber zu Hüpfern über zehn Meter — das ist der unsicherste Punkt
+             der ganzen Rechnung. */
+          k.vy = 0; k.zustand = "rollen";
+        }
+      } else {
+        k.zustand = "flug";
+      }
+      if (k.zustand === "rollen" &&
+          Math.sqrt(k.vx * k.vx + k.vz * k.vz) < 0.02) k.zustand = "still";
+    });
+
+    return { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, wucht: Jn, phase: phaseVorStoss };
+  }
+
+  /* --- Gesamtlauf ----------------------------------------------------------- */
+  function simuliere(p, nurErgebnis) {
+    var R = p.durchmesser / 2000;
+    var rad = p.winkel * Math.PI / 180;
+    var az = (p.richtung || 0) * Math.PI / 180;
+    var vh0 = p.v0 * Math.cos(rad);
+
+    var om = p.drall * 2 * Math.PI;
+    var gam = p.verdrehung * Math.PI / 180;
+
+    var rnd = saatQuelle(p.saat);
+
+    var schuetze = neuerKoerper(p, {
+      rolle: "schuetze", x: 0, y: p.y0, z: 0,
+      vx: vh0 * Math.cos(az), vy: p.v0 * Math.sin(rad), vz: vh0 * Math.sin(az),
+      wx: -om * Math.cos(gam) * Math.sin(az),
+      wy: om * Math.sin(gam),
+      wz: om * Math.cos(gam) * Math.cos(az),
+      m: p.m, d: 2 * R, zustand: "flug"
+    });
+
+    var koerper = [schuetze];
+
+    var coch = null;
+    if (p.cochonnetKoerper) {
+      var Rc = p.cd / 2000;
+      coch = neuerKoerper(p, {
+        rolle: "cochonnet", x: p.ziel, y: 0, z: 0,
+        vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0,
+        m: p.cm / 1000, d: 2 * Rc, zustand: "still"
+      });
+      koerper.push(coch);
+    }
+
+    var ziel = null;
+    if (p.zielkugel) {
+      var Rz = p.zkd / 2000;
+      ziel = neuerKoerper(p, {
+        rolle: "ziel", x: p.zkx, y: 0, z: p.zkz,
+        vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0,
+        m: p.zkm / 1000, d: 2 * Rz, zustand: "still"
+      });
+      koerper.push(ziel);
+    }
+
+    if (!nurErgebnis) {
+      for (var q = 0; q < koerper.length; q++) {
+        var k0 = koerper[q];
+        k0.spur = [{ t: 0, x: k0.x, y: k0.y, z: k0.z, w: 0,
+                     v: Math.sqrt(k0.vx * k0.vx + k0.vy * k0.vy + k0.vz * k0.vz),
+                     phase: k0.zustand }];
+      }
+    }
+
+    var t = 0, i, j, stoss = null, minSpalt = 1e9;
+
+    while (t < MAX_T) {
+      var lebt = false;
+      for (i = 0; i < koerper.length; i++) {
+        if (koerper[i].zustand !== "still") { lebt = true; break; }
+      }
+      if (!lebt) break;
+
+      t += DT;
+      for (i = 0; i < koerper.length; i++) schritt(koerper[i], p, rnd);
+
+      for (i = 0; i < koerper.length; i++) {
+        for (j = i + 1; j < koerper.length; j++) {
+          var a = koerper[i], b = koerper[j];
+          if (a.zustand === "still" && b.zustand === "still") continue;
+          var spalt = abstandKugeln(a, b, false) - (a.R + b.R);
+          if (spalt < minSpalt) minSpalt = spalt;
+          if (spalt <= 0) {
+            var tr = stossKugeln(a, b, p, rnd);
+            if (tr && !stoss) { stoss = tr; stoss.t = t; }
+          }
+        }
+      }
+
+      if (!nurErgebnis) {
+        for (i = 0; i < koerper.length; i++) {
+          var k = koerper[i];
+          k.spur.push({ t: t, x: k.x, y: k.y, z: k.z, w: k.dreh,
+                        v: Math.sqrt(k.vx * k.vx + k.vy * k.vy + k.vz * k.vz),
+                        phase: k.zustand });
+        }
+      }
+    }
+
+    var s = schuetze;
+    var donnee = s.aufpralle.length ? s.aufpralle[0].x : s.x;
+    /* Wenn das Cochonnet mitspielt, zählt seine Endlage als Ziel. */
+    var zx = coch ? coch.x : p.ziel, zz = coch ? coch.z : 0;
+    var abstand = Math.sqrt((s.x - zx) * (s.x - zx) + (s.z - zz) * (s.z - zz));
+
+    var erg = {
+      punkte: s.spur, aufpralle: s.aufpralle, tiefen: s.tiefen, hMax: s.hMax,
+      weite: s.x, seite: s.z, abstand: abstand, dauer: t,
+      donnee: donnee, rollweg: s.x - donnee,
+      krater: s.tiefen.length ? s.tiefen[0] : 0,
+      ziel: p.ziel, zielX: zx, zielZ: zz, R: R, sinMax: s.sinMax,
+      koerper: koerper, treffer: !!stoss, stoss: stoss,
+      fehlabstand: stoss ? 0 : Math.max(0, minSpalt)
+    };
+
+    if (coch) {
+      var cvx = coch.x - coch.startX, cvz = coch.z - coch.startZ;
+      erg.cochonnet = {
+        spur: coch.spur, R: coch.R, startX: coch.startX, startZ: coch.startZ,
+        x: coch.x, z: coch.z, hMax: coch.hMax,
+        verschiebung: Math.sqrt(cvx * cvx + cvz * cvz),
+        getroffen: Math.sqrt(cvx * cvx + cvz * cvz) > 0.01
+      };
+    }
+
+    if (ziel) {
+      var vx = ziel.x - ziel.startX, vz = ziel.z - ziel.startZ;
+      erg.zielKugel = {
+        spur: ziel.spur, R: ziel.R,
+        startX: ziel.startX, startZ: ziel.startZ,
+        x: ziel.x, z: ziel.z, hMax: ziel.hMax,
+        verschiebung: Math.sqrt(vx * vx + vz * vz)
+      };
+      /* Carreau: die Zielkugel fliegt weg, der Schütze bleibt an ihrem Platz */
+      var dSch = Math.sqrt((s.x - ziel.startX) * (s.x - ziel.startX) +
+                           (s.z - ziel.startZ) * (s.z - ziel.startZ));
+      erg.schuetzeAmZielort = dSch;
+      erg.ausDemFlug = !!(stoss && stoss.phase === "flug");
+      erg.carreau = erg.treffer && erg.ausDemFlug &&
+                    erg.zielKugel.verschiebung > 0.5 && dSch < 0.5;
+    }
+    return erg;
+  }
+
+  /* ---------- 2. Regler ---------- */
+
+  function parameter() {
+    return {
+      v0:          parseFloat(el("v0").value),
+      winkel:      parseFloat(el("winkel").value),
+      y0:          parseFloat(el("y0").value),
+      ziel:        parseFloat(el("ziel").value),
+      m:           parseFloat(el("masse").value) / 1000,
+      durchmesser: parseFloat(el("durchmesser").value),
+      e:           parseFloat(el("e").value),
+      mu:          parseFloat(el("mu").value),
+      haerte:      Math.pow(10, parseFloat(el("haerte").value)),
+      korn:        parseFloat(el("korn").value),
+      drall:       parseFloat(el("drall").value),
+      zielkugel:      zielkugelAn,
+      cochonnetKoerper: cochonnetAn,
+      cm:          parseFloat(el("cm").value),
+      cd:          parseFloat(el("cd").value),
+      zkx:         parseFloat(el("zkx").value),
+      zkz:         parseFloat(el("zkz").value),
+      zkm:         parseFloat(el("zkm").value),
+      zkd:         parseFloat(el("zkd").value),
+      richtung:    parseFloat(el("richtung").value),
+      anzahl:      parseInt(el("anzahl").value, 10),
+      streuV:      parseFloat(el("streuV").value),
+      streuW:      parseFloat(el("streuW").value),
+      verdrehung:  parseFloat(el("verdrehung").value),
+      saat:        saatWurf,
+      pRef:        pRef
+    };
+  }
+
+  function haerteText(kPa) {
+    return kPa >= 1000 ? (kPa / 1000).toFixed(1).replace(".", ",") + " MPa"
+                       : Math.round(kPa) + " kPa";
+  }
+
+  function stufe(wert, grenzen, worte) {
+    for (var i = 0; i < grenzen.length; i++) {
+      if (wert < grenzen[i]) return worte[i];
+    }
+    return worte[worte.length - 1];
+  }
+
+  function schreibeDeutung() {
+    var p = parameter();
+
+    /* Rücksprung aus 4 m/s Fallgeschwindigkeit, in Zentimetern Steighöhe */
+    var vAb = 4 * p.e;
+    var hoch = vAb * vAb / (2 * G) * 100;
+    el("deutung-e").textContent =
+      "Bei e = " + p.e.toFixed(2) + " springt die Kugel aus 4 m/s Fall noch " +
+      (hoch < 1 ? hoch.toFixed(1) : hoch.toFixed(0)) + " cm hoch — " +
+      stufe(p.e, [0.10, 0.20, 0.32], ["sie klebt förmlich am Boden", "sie dotzt kurz und flach",
+                                      "sie hüpft mehrfach deutlich", "sie springt wie auf Hartplatz"]) + ".";
+
+    /* Rollweg aus 2 m/s */
+    var weg = 4 / (2 * p.mu * G);
+    el("deutung-mu").textContent =
+      "Bei µ = " + p.mu.toFixed(2) + " rollt sie aus 2 m/s noch " + weg.toFixed(2) + " m aus — " +
+      stufe(p.mu, [0.08, 0.15, 0.24], ["der Platz läuft sehr weit", "er läuft zügig",
+                                       "er bremst spürbar", "er stoppt fast sofort"]) + ".";
+
+    /* Einschlagtiefe der aktuellen Kugel beim ersten Aufprall */
+    var tiefe = bahn ? bahn.krater * 1000 : 0;
+    el("deutung-haerte").textContent =
+      "Bei " + haerteText(p.haerte) + " sinkt die " + Math.round(p.m * 1000) + "-g-Kugel beim ersten " +
+      "Aufprall " + tiefe.toFixed(1) + " mm ein — " +
+      stufe(p.haerte, [200, 600, 2000], ["der Boden gibt stark nach", "er gibt merklich nach",
+                                         "er ist fest", "er ist praktisch unnachgiebig"]) + ".";
+
+    var R = p.durchmesser / 2000, rK = p.korn / 1000;
+    var theta = Math.asin(rK / (R + rK)) * 180 / Math.PI;
+    el("deutung-korn").textContent =
+      "Bei " + p.korn.toFixed(1) + " mm Korn kippt die Kontaktnormale um bis zu " +
+      theta.toFixed(1) + "° — " +
+      stufe(p.korn, [0.6, 1.5, 6], ["die Kugel läuft praktisch geradeaus", "sie weicht leicht ab",
+                                    "sie springt spürbar zur Seite", "sie ist seitlich kaum berechenbar"]) + ".";
+
+    var uOben = p.drall * Math.PI * (p.durchmesser / 1000);   /* Umfangsgeschwindigkeit */
+    var anteilRueck = Math.abs(Math.cos(p.verdrehung * Math.PI / 180));
+    el("deutung-serie").textContent = (p.streuV < 0.005 && p.streuW < 0.05)
+      ? "Ohne Werferstreuung zeigt die Serie allein, was der Untergrund anrichtet."
+      : "Der Werfer allein streut die Weite um etwa ± " +
+        (p.streuV * 1.35 + p.streuW * 0.10).toFixed(2) +
+        " m — der Untergrund kommt dazu.";
+
+    el("deutung-hand").textContent = p.drall < 0.05
+      ? "Ohne Drall wirkt die Handverdrehung nicht — die Achse hat nichts zu drehen."
+      : "Bei " + p.drall.toFixed(1) + " U/s läuft die Oberfläche mit " + uOben.toFixed(1) +
+        " m/s um. Davon wirken " + Math.round(anteilRueck * 100) + " % als Rückwärtsdrall (bremst) und " +
+        Math.round((1 - anteilRueck) * 100) + " % als Seitendrall (lenkt ab).";
+  }
+
+  function beschrifteRegler() {
+    var p = parameter();
+    el("v0-wert").textContent          = p.v0.toFixed(1) + " m/s";
+    el("winkel-wert").textContent      = p.winkel.toFixed(0) + "°";
+    el("y0-wert").textContent          = p.y0.toFixed(2) + " m";
+    el("ziel-wert").textContent        = p.ziel.toFixed(1) + " m";
+    el("masse-wert").textContent       = Math.round(p.m * 1000) + " g";
+    el("durchmesser-wert").textContent = p.durchmesser.toFixed(1) + " mm";
+    el("e-wert").textContent           = "e = " + p.e.toFixed(2);
+    el("mu-wert").textContent          = "µ = " + p.mu.toFixed(2);
+    el("haerte-wert").textContent      = haerteText(p.haerte);
+    el("korn-wert").textContent        = p.korn.toFixed(1) + " mm";
+    el("drall-wert").textContent       = p.drall.toFixed(1) + " U/s";
+    el("cm-wert").textContent          = p.cm.toFixed(0) + " g";
+    el("cd-wert").textContent          = p.cd.toFixed(0) + " mm";
+    el("zkx-wert").textContent         = p.zkx.toFixed(2) + " m";
+    el("zkz-wert").textContent         = (p.zkz >= 0 ? "+" : "−") + Math.abs(p.zkz).toFixed(2) + " m";
+    el("richtung-wert").textContent    = (p.richtung >= 0 ? "+" : "−") + Math.abs(p.richtung).toFixed(1) + "°";
+    el("zkm-wert").textContent         = p.zkm.toFixed(0) + " g";
+    el("zkd-wert").textContent         = p.zkd.toFixed(1) + " mm";
+    el("anzahl-wert").textContent      = p.anzahl + " Würfe";
+    el("streuV-wert").textContent      = "± " + p.streuV.toFixed(2) + " m/s";
+    el("streuW-wert").textContent      = "± " + p.streuW.toFixed(1) + "°";
+    el("verdrehung-wert").textContent  = (p.verdrehung > 0 ? "+" : "") + p.verdrehung.toFixed(0) + "°";
+
+    el("kopfzeile").textContent =
+      Math.round(p.m * 1000) + " g · " + p.durchmesser.toFixed(1) + " mm · " +
+      (aktiverBoden === null ? "eigener Boden" : BOEDEN[aktiverBoden].name);
+
+    schreibeDeutung();
+
+    el("boden-hinweis").textContent = aktiverBoden === null
+      ? "Eigene Mischung · kalibriert auf " + haerteText(pRef)
+      : "Vorgabe " + BOEDEN[aktiverBoden].name + " · frei nachjustierbar";
+  }
+
+  function baueBodenwahl() {
+    var leiste = el("boeden");
+    BOEDEN.forEach(function (b, i) {
+      var knopf = document.createElement("button");
+      knopf.className = "boden";
+      knopf.type = "button";
+      knopf.textContent = b.name;
+      knopf.setAttribute("aria-pressed", i === STANDARD_BODEN ? "true" : "false");
+      knopf.addEventListener("click", function () { waehleBoden(i); });
+      leiste.appendChild(knopf);
+    });
+  }
+
+  function waehleBoden(i) {
+    var b = BOEDEN[i];
+    el("e").value = b.e;
+    el("mu").value = b.mu;
+    el("haerte").value = Math.log(b.p) / Math.LN10;
+    el("korn").value = b.korngroesse;
+    aktiverBoden = i;
+    stilBoden = i;
+    pRef = b.p;
+    markiereBoden();
+    anhalten();
+    beschrifteRegler();
+    neuRechnen(true);
+  }
+
+  function markiereBoden() {
+    var knoepfe = el("boeden").children;
+    for (var i = 0; i < knoepfe.length; i++) {
+      knoepfe[i].setAttribute("aria-pressed", i === aktiverBoden ? "true" : "false");
+    }
+  }
+
+  /* ---------- 3. Abbildung Welt → Bildschirm ---------- */
+
+  function baueAnsicht() {
+    var breite = canvas.clientWidth, hoehe = canvas.clientHeight;
+    if (!breite || !hoehe || !bahn) return;
+
+    var links = 18, rechts = 22, oben = 30, unten = 46;
+    var nutzbreite = breite - links - rechts;
+    var nutzhoehe = hoehe - oben - unten;
+
+    /* Die Längsachse ist fest: 15 m füllen die Piste, unabhängig von allem anderen.
+       Nur wenn ein Wurf tatsächlich weiter reicht, wird der Ausschnitt geweitet. */
+    var weiteste = Math.max(bahn.weite, bahn.ziel, groessteMerk("weite"),
+                            bahn.zielKugel ? Math.max(bahn.zielKugel.x, bahn.zielKugel.startX) : 0,
+                            bahn.cochonnet ? bahn.cochonnet.x : 0) + 0.4;
+    var xSpanne = Math.max(BASIS_X, weiteste);
+    var skala = Math.max(2, nutzbreite / xSpanne);
+    xSpanne = nutzbreite / skala;
+
+    /* Reicht die Fensterhöhe für den Bogen nicht, wird ausschließlich die Höhe
+       gestaucht. Die Längsskala bleibt dadurch in jedem Fenster dieselbe. */
+    var bedarfY = Math.max(0.8, bahn.hMax, groessteMerk("hMax"),
+                           bahn.zielKugel ? bahn.zielKugel.hMax : 0,
+                           bahn.cochonnet ? bahn.cochonnet.hMax : 0) + 0.30;
+    var skalaY = skala;
+    if (nutzhoehe / skala < bedarfY) skalaY = Math.max(1, nutzhoehe / bedarfY);
+    var ySpanne = nutzhoehe / skalaY;
+
+    var stauchung = skala / skalaY;
+    var hinweis = el("hinweis-hoehe");
+    hinweis.hidden = stauchung < 1.03;
+    if (!hinweis.hidden) {
+      hinweis.textContent = "Höhe 1:" + stauchung.toFixed(1).replace(".", ",") + " gestaucht";
+    }
+
+    view = {
+      skala: skala, skalaY: skalaY, links: links, boden: hoehe - unten,
+      breite: breite, hoehe: hoehe, xSpanne: xSpanne, ySpanne: ySpanne,
+      sx: function (x) { return links + x * skala; },
+      sy: function (y) { return (hoehe - unten) - y * skalaY; }
+    };
+    streueKies();
+    hgGueltig = false;
+    baueSichtOben();
+  }
+
+  /* Die Draufsicht teilt sich die x-Achse mit der Seitenansicht, damit beide
+     Darstellungen senkrecht übereinander passen. Die Seitenachse z wird eigens
+     skaliert und beschriftet, weil sie sonst unsichtbar bliebe. */
+  function baueSichtOben() {
+    var breite = obenLeinwand.clientWidth, hoehe = obenLeinwand.clientHeight;
+    if (!breite || !hoehe) { sichtOben = null; return; }
+
+    var zMax = 0.45;
+    if (bahn && bahn.punkte) {
+      for (var k = 0; k < bahn.punkte.length; k += 7) {
+        var az = Math.abs(bahn.punkte[k].z);
+        if (az > zMax) zMax = az;
+      }
+    }
+    if (groessteMerk("seiteMax") > zMax) zMax = groessteMerk("seiteMax");
+    if (bahn.zielKugel) {
+      var azk = Math.max(Math.abs(bahn.zielKugel.z), Math.abs(bahn.zielKugel.startZ));
+      if (azk > zMax) zMax = azk;
+    }
+    if (bahn.cochonnet && Math.abs(bahn.cochonnet.z) > zMax) zMax = Math.abs(bahn.cochonnet.z);
+    if (streuung && streuung.zMax > zMax) zMax = streuung.zMax;
+    zMax = zMax * 1.25;
+
+    var mitte = hoehe / 2 + 5;
+    var halb = Math.max(10, mitte - 16);
+    sichtOben = {
+      breite: breite, hoehe: hoehe, mitte: mitte, zMax: zMax,
+      skalaZ: halb / zMax,
+      sx: view.sx,
+      sz: function (z) { return mitte - z * (halb / zMax); }
+    };
+  }
+
+  function zeichneOben(i) {
+    if (!sichtOben || !view || !bahn || !bahn.punkte) { return; }
+    if (i < 0) i = 0;
+    if (i >= bahn.punkte.length) i = bahn.punkte.length - 1;
+    var c = ctxOben, S = sichtOben, k, p;
+    c.clearRect(0, 0, S.breite, S.hoehe);
+
+    /* Grundfläche im Farbton des Bodens */
+    c.fillStyle = stil().basis;
+    c.fillRect(0, 0, S.breite, S.hoehe);
+
+    /* Wurfachse und Seitenraster */
+    c.font = "9px 'IBM Plex Mono', ui-monospace, monospace";
+    c.textBaseline = "middle";
+    c.textAlign = "left";
+    var raster = S.zMax > 1.2 ? 1 : (S.zMax > 0.5 ? 0.5 : 0.2);
+    for (var q = -3; q <= 3; q++) {
+      var zz = q * raster;
+      if (Math.abs(zz) > S.zMax) continue;
+      var yy = S.sz(zz);
+      c.strokeStyle = q === 0 ? "rgba(255,253,247,.5)" : "rgba(255,253,247,.16)";
+      c.lineWidth = 1;
+      if (q === 0) c.setLineDash([6, 5]); else c.setLineDash([]);
+      c.beginPath();
+      c.moveTo(0, yy + 0.5);
+      c.lineTo(S.breite, yy + 0.5);
+      c.stroke();
+      if (q !== 0) {
+        c.fillStyle = "rgba(255,253,247,.45)";
+        c.fillText((zz > 0 ? "+" : "") + zz.toFixed(1).replace(".", ",") + " m", 4, yy - 6);
+      }
+    }
+    c.setLineDash([]);
+
+    /* Streuwolke */
+    if (streuung) {
+      for (k = 0; k < streuung.punkte.length; k++) {
+        p = streuung.punkte[k];
+        c.fillStyle = "rgba(168,80,60,.55)";
+        c.beginPath();
+        c.arc(S.sx(p.x), S.sz(p.z), 1.8, 0, 6.2832);
+        c.fill();
+      }
+      /* Streuellipse: eine und zwei Standardabweichungen */
+      for (var f = 1; f <= 2; f++) {
+        c.strokeStyle = f === 1 ? "rgba(214,65,43,.9)" : "rgba(214,65,43,.45)";
+        c.lineWidth = f === 1 ? 1.6 : 1.1;
+        c.save();
+        c.translate(S.sx(streuung.mx), S.sz(streuung.mz));
+        c.beginPath();
+        for (var w = 0; w <= 48; w++) {
+          var a = w / 48 * 6.2832;
+          var px = Math.cos(a) * f * streuung.sx * view.skala;
+          var pz = -Math.sin(a) * f * streuung.sz * S.skalaZ;
+          if (w === 0) c.moveTo(px, pz); else c.lineTo(px, pz);
+        }
+        c.stroke();
+        c.restore();
+      }
+    }
+
+    /* Vergleichswurf */
+    for (var mi = 0; mi < merkliste.length; mi++) {
+      var mw = merkliste[mi];
+      c.setLineDash([5, 4]);
+      c.strokeStyle = mw.farbe;
+      c.lineWidth = 1.3;
+      c.beginPath();
+      for (k = 0; k < mw.spurOben.length; k++) {
+        p = mw.spurOben[k];
+        if (k === 0) c.moveTo(S.sx(p.x), S.sz(p.z)); else c.lineTo(S.sx(p.x), S.sz(p.z));
+      }
+      c.stroke();
+      c.setLineDash([]);
+      c.beginPath();
+      c.arc(S.sx(mw.weite), S.sz(mw.seite), 3.5, 0, 6.2832);
+      c.stroke();
+    }
+
+    /* Zielkugel */
+    if (bahn.zielKugel) {
+      var zk = bahn.zielKugel;
+      var idx = Math.max(0, Math.min(zk.spur.length - 1, i));
+      c.strokeStyle = "rgba(237,234,225,.4)";
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(S.sx(zk.startX), S.sz(zk.startZ), Math.max(4, zk.R * view.skala * 0.8), 0, 6.2832);
+      c.stroke();
+
+      c.strokeStyle = "rgba(224,170,110,.85)";
+      c.lineWidth = 1.6;
+      c.beginPath();
+      var los = false;
+      for (k = 0; k <= idx; k += 4) {
+        p = zk.spur[k];
+        if (!los) { c.moveTo(S.sx(p.x), S.sz(p.z)); los = true; }
+        else c.lineTo(S.sx(p.x), S.sz(p.z));
+      }
+      if (los) c.stroke();
+
+      p = zk.spur[idx];
+      c.fillStyle = "#C08A4E";
+      c.beginPath();
+      c.arc(S.sx(p.x), S.sz(p.z), Math.max(4, zk.R * view.skala * 0.8), 0, 6.2832);
+      c.fill();
+      c.strokeStyle = "rgba(255,240,220,.85)";
+      c.lineWidth = 1.1;
+      c.stroke();
+    }
+
+    /* Cochonnet */
+    var ccx = bahn.ziel, ccz = 0;
+    if (bahn.cochonnet) {
+      var co2 = bahn.cochonnet;
+      var ci = Math.max(0, Math.min(co2.spur.length - 1, i));
+      ccx = co2.spur[ci].x; ccz = co2.spur[ci].z;
+      if (co2.getroffen) {
+        c.strokeStyle = "rgba(208,144,43,.45)";
+        c.lineWidth = 1;
+        c.beginPath();
+        c.arc(S.sx(co2.startX), S.sz(co2.startZ), 3.5, 0, 6.2832);
+        c.stroke();
+        c.strokeStyle = "rgba(208,144,43,.85)";
+        c.lineWidth = 1.4;
+        c.beginPath();
+        var lo = false;
+        for (k = 0; k <= ci; k += 4) {
+          p = co2.spur[k];
+          if (!lo) { c.moveTo(S.sx(p.x), S.sz(p.z)); lo = true; }
+          else c.lineTo(S.sx(p.x), S.sz(p.z));
+        }
+        if (lo) c.stroke();
+      }
+    }
+    c.fillStyle = "#D0902B";
+    c.beginPath();
+    c.arc(S.sx(ccx), S.sz(ccz), 4, 0, 6.2832);
+    c.fill();
+
+    /* Abwurfkreis */
+    c.strokeStyle = "#D6412B";
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(S.sx(0), S.sz(0), Math.max(5, 0.25 * view.skala * 0.5), 0, 6.2832);
+    c.stroke();
+
+    /* Bahn bis zum aktuellen Punkt */
+    if (!bahn.stuetz) baueStuetzpunkte();
+    c.strokeStyle = "rgba(214,226,232,.8)";
+    c.lineWidth = 1.8;
+    c.beginPath();
+    var erster = true;
+    for (k = 0; k < bahn.stuetz.length; k++) {
+      p = bahn.stuetz[k];
+      if (p.i > i) break;
+      if (erster) { c.moveTo(S.sx(p.x), S.sz(p.z)); erster = false; }
+      else c.lineTo(S.sx(p.x), S.sz(p.z));
+    }
+    if (!erster) {
+      var akt = bahn.punkte[i];
+      c.lineTo(S.sx(akt.x), S.sz(akt.z));
+      c.stroke();
+    }
+
+    /* Aufprallpunkte */
+    for (k = 0; k < bahn.aufpralle.length; k++) {
+      if (bahn.aufpralle[k].x > bahn.punkte[i].x + 0.001) break;
+      c.strokeStyle = k === 0 ? "rgba(208,144,43,.9)" : "rgba(237,234,225,.35)";
+      c.lineWidth = 1.2;
+      c.beginPath();
+      c.arc(S.sx(bahn.aufpralle[k].x), S.sz(bahn.aufpralle[k].z), 3.5, 0, 6.2832);
+      c.stroke();
+    }
+
+    /* Kugel */
+    var pk = bahn.punkte[i];
+    var rr = Math.max(4, bahn.R * view.skala * 0.8);
+    c.fillStyle = "#B4BEC4";
+    c.beginPath();
+    c.arc(S.sx(pk.x), S.sz(pk.z), rr, 0, 6.2832);
+    c.fill();
+    c.strokeStyle = "rgba(255,253,247,.85)";
+    c.lineWidth = 1.1;
+    c.stroke();
+  }
+
+  function stil() { return BOEDEN[stilBoden].stil; }
+
+  function streueKies() {
+    kies = []; halme = [];
+    var s = stil();
+    var samen = 20250731 + stilBoden * 7919;
+    var zufall = function () {
+      samen = (samen * 1103515245 + 12345) % 2147483648;
+      return samen / 2147483648;
+    };
+    var band = Math.max(6, view.hoehe - view.boden - 2);
+    var anzahl = Math.min(2200, Math.round(view.breite * s.dichte));
+    for (var i = 0; i < anzahl; i++) {
+      kies.push({
+        x: zufall() * view.breite,
+        y: view.boden + 2 + zufall() * band,
+        r: s.groesse[0] + zufall() * (s.groesse[1] - s.groesse[0]),
+        f: s.korn[Math.floor(zufall() * s.korn.length)],
+        a: s.alpha[0] + zufall() * (s.alpha[1] - s.alpha[0]),
+        w: zufall() * 6.2832
+      });
+    }
+    if (s.form === "halm") {
+      var zahl = Math.min(2000, Math.round(view.breite * 1.6));
+      for (var j = 0; j < zahl; j++) {
+        halme.push({
+          x: zufall() * view.breite,
+          h: 2 + zufall() * 5,
+          n: (zufall() - 0.5) * 3.5,
+          f: s.korn[Math.floor(zufall() * s.korn.length)],
+          a: 0.35 + zufall() * 0.5
+        });
+      }
+    }
+  }
+
+  var letzteBreite = 0, letzteHoehe = 0, messungGeplant = false;
+
+  /* Bezugsfenster ist 993 CSS-px hoch. Die Flächen folgen linear, die Schrift
+     mit der Wurzel, damit kleine Fenster nicht unlesbar werden. */
+  var BEZUG_H = 993;
+
+  function setzeMassstabsfaktoren() {
+    var h = window.innerHeight || document.documentElement.clientHeight || BEZUG_H;
+    var s = Math.max(0.34, Math.min(1.15, h / BEZUG_H));
+    var fs = Math.max(0.62, Math.min(1.08, Math.sqrt(h / BEZUG_H)));
+    var st = document.documentElement.style;
+    st.setProperty("--s", s.toFixed(3));
+    st.setProperty("--fs", fs.toFixed(3));
+  }
+
+  function passeGroesseAn() {
+    setzeMassstabsfaktoren();
+    var dpr = window.devicePixelRatio || 1;
+    var kasten = canvas.getBoundingClientRect();
+    if (kasten.width < 2 || kasten.height < 2) return;   /* Layout noch nicht fertig */
+    letzteBreite = kasten.width;
+    letzteHoehe = kasten.height;
+    canvas.width = Math.round(kasten.width * dpr);
+    canvas.height = Math.round(kasten.height * dpr);
+    ctxHaupt.setTransform(dpr, 0, 0, dpr, 0, 0);
+    hgLeinwand.width = canvas.width;
+    hgLeinwand.height = canvas.height;
+    hgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    hgGueltig = false;
+
+    var kastenOben = obenLeinwand.getBoundingClientRect();
+    if (kastenOben.width > 2 && kastenOben.height > 2) {
+      obenLeinwand.width = Math.round(kastenOben.width * dpr);
+      obenLeinwand.height = Math.round(kastenOben.height * dpr);
+      ctxOben.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    baueAnsicht();
+    zeichne(frameIndex);
+  }
+
+  /* Einmal pro Bildaufbau nachmessen, egal wie oft die Meldung kommt. */
+  function planeMessung() {
+    if (messungGeplant) return;
+    messungGeplant = true;
+    requestAnimationFrame(function () {
+      messungGeplant = false;
+      passeGroesseAn();
+    });
+  }
+
+  /* Sicherheitsnetz: erkennt eine Größenänderung auch ohne resize-Ereignis. */
+  function pruefeGroesse() {
+    var kasten = canvas.getBoundingClientRect();
+    if (Math.abs(kasten.width - letzteBreite) > 1 || Math.abs(kasten.height - letzteHoehe) > 1) {
+      passeGroesseAn();
+    }
+  }
+
+  /* ---------- 4. Zeichnen ---------- */
+
+  function baueHintergrund() {
+    if (hgGueltig) return;
+    ctx = hgCtx;                              /* alle Zeichenfunktionen nutzen 'ctx' */
+    ctx.clearRect(0, 0, view.breite, view.hoehe);
+    zeichneBoden();
+    zeichneMassband();
+    zeichneAbwurfring();
+    zeichneVergleich();
+    ctx = ctxHaupt;
+    hgGueltig = true;
+  }
+
+  function zeichne(i) {
+    try { zeichneRoh(i); } catch (e) { meldeFehler(e, "zeichnen"); }
+  }
+
+  function zeichneRoh(i) {
+    if (!bahn || !view) return;
+    if (i < 0) i = 0;
+    if (i >= bahn.punkte.length) i = bahn.punkte.length - 1;
+    baueHintergrund();
+    ctx.clearRect(0, 0, view.breite, view.hoehe);
+    ctx.drawImage(hgLeinwand, 0, 0, view.breite, view.hoehe);
+    zeichneAufprallringe(i);
+    zeichneCochonnetSpur(i);
+    zeichneCochonnet(i);
+    zeichneZielkugelSpur(i);
+    zeichneSpur(i);
+    zeichneZielkugel(i);
+    zeichneKugel(i);
+    zeichneOben(i);
+    aktualisiereTelemetrie(i);
+    if (!el("diagnose").hidden) schreibeDiagnose();
+  }
+
+  function zeichneBoden() {
+    var s = stil(), x, y, i;
+    ctx.fillStyle = s.basis;
+    ctx.fillRect(0, view.boden, view.breite, view.hoehe - view.boden);
+
+    /* Struktur des Untergrunds */
+    if (s.streifen === "walze" || s.streifen === "welle") {
+      ctx.strokeStyle = s.streifenFarbe;
+      ctx.lineWidth = 1;
+      for (y = view.boden + 6; y < view.hoehe; y += 7) {
+        ctx.beginPath();
+        if (s.streifen === "walze") {
+          ctx.moveTo(0, y + 0.5); ctx.lineTo(view.breite, y + 0.5);
+        } else {
+          for (x = 0; x <= view.breite; x += 10) {
+            var wy = y + Math.sin((x + y * 3) * 0.035) * 2.2;
+            if (x === 0) ctx.moveTo(x, wy); else ctx.lineTo(x, wy);
+          }
+        }
+        ctx.stroke();
+      }
+    }
+    if (s.streifen === "fuge") {                       /* Dehnungsfugen alle 2 m */
+      ctx.strokeStyle = s.streifenFarbe;
+      ctx.lineWidth = 1.5;
+      for (var m = 0; m < 400; m += 2) {
+        x = view.sx(m);
+        if (x > view.breite) break;
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, view.boden);
+        ctx.lineTo(x + 0.5, view.hoehe);
+        ctx.stroke();
+      }
+    }
+
+    /* Korn */
+    for (i = 0; i < kies.length; i++) {
+      var k = kies[i];
+      ctx.globalAlpha = k.a;
+      ctx.fillStyle = k.f;
+      ctx.beginPath();
+      if (s.form === "kantig") {                       /* gebrochenes Gestein statt runder Punkte */
+        ctx.moveTo(k.x + Math.cos(k.w) * k.r, k.y + Math.sin(k.w) * k.r);
+        for (var q = 1; q < 4; q++) {
+          var a = k.w + q * 1.5708 + 0.35;
+          var f = (q % 2) ? 0.65 : 1;
+          ctx.lineTo(k.x + Math.cos(a) * k.r * f, k.y + Math.sin(a) * k.r * f);
+        }
+        ctx.closePath();
+      } else {
+        ctx.arc(k.x, k.y, k.r, 0, 6.2832);
+      }
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    /* Halme über der Kante */
+    for (i = 0; i < halme.length; i++) {
+      var h = halme[i];
+      ctx.globalAlpha = h.a;
+      ctx.strokeStyle = h.f;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(h.x, view.boden + 1);
+      ctx.lineTo(h.x + h.n, view.boden - h.h);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    if (s.linie) {
+      ctx.strokeStyle = s.linie;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, view.boden + 0.5);
+      ctx.lineTo(view.breite, view.boden + 0.5);
+      ctx.stroke();
+    }
+  }
+
+  function zeichneMassband() {
+    var schritt = view.skala < 26 ? 2 : 1;
+    var xMax = view.xSpanne;
+    var bandOben = view.boden + 1;
+    var bandHoehe = 26;
+    var x, m, gross;
+
+    /* Dunkles Band unter der Bodenkante: hebt die Skala vom Untergrund ab,
+       unabhängig davon, wie hell der gewählte Boden ist. */
+    ctx.fillStyle = "rgba(14,16,14,.82)";
+    ctx.fillRect(0, bandOben, view.breite, bandHoehe);
+    ctx.strokeStyle = "rgba(237,234,225,.28)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, bandOben + bandHoehe + 0.5);
+    ctx.lineTo(view.breite, bandOben + bandHoehe + 0.5);
+    ctx.stroke();
+
+    ctx.font = "600 11px 'IBM Plex Mono', ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    for (m = 0; m <= xMax + 0.001; m += schritt) {
+      x = view.sx(m);
+      if (x > view.breite - 2) break;
+      gross = (m % (schritt * 5) === 0);
+      ctx.strokeStyle = gross ? "rgba(255,253,247,.95)" : "rgba(255,253,247,.5)";
+      ctx.lineWidth = gross ? 1.6 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, bandOben);
+      ctx.lineTo(x + 0.5, bandOben + (gross ? 9 : 5));
+      ctx.stroke();
+      if (gross) {
+        ctx.fillStyle = "#FFFDF7";
+        ctx.fillText(m + " m", x, bandOben + 17);
+      }
+    }
+    ctx.textBaseline = "top";
+  }
+
+  function zeichneAbwurfring() {
+    var x = view.sx(0);
+    var rx = Math.max(9, 0.25 * view.skala);      /* Wurfkreis, 50 cm Durchmesser */
+    var ry = Math.max(3, rx * 0.3);
+
+    ctx.strokeStyle = "rgba(214,65,43,.35)";
+    ctx.lineWidth = 5;
+    ellipseBogen(x, view.boden + 2, rx, ry);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#D6412B";
+    ctx.lineWidth = 2.2;
+    ellipseBogen(x, view.boden + 2, rx, ry);
+    ctx.stroke();
+  }
+
+  function zeichneAufprallringe(i) {
+    var xJetzt = bahn.punkte[i].x;
+    ctx.lineWidth = 1.2;
+    for (var k = 0; k < bahn.aufpralle.length; k++) {
+      var ax = bahn.aufpralle[k].x;
+      if (ax > xJetzt + 0.001) break;
+      /* Kraterbreite maßstäblich: a ≈ √(2Rd) */
+      var d = bahn.tiefen[k];
+      var breite = Math.max(4, Math.sqrt(2 * bahn.R * d) * view.skala);
+      ctx.strokeStyle = k === 0 ? "rgba(208,144,43,.85)" : "rgba(237,234,225,.3)";
+      ellipseBogen(view.sx(ax), view.boden, breite, Math.max(2, breite * 0.3));
+      ctx.stroke();
+    }
+  }
+
+  function zeichneVergleich() {
+    if (!merkliste.length) return;
+    var i, p, mi;
+
+    for (mi = 0; mi < merkliste.length; mi++) {
+      var mw = merkliste[mi];
+
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = mw.farbe;
+      ctx.beginPath();
+      for (i = 0; i < mw.spur.length; i++) {
+        p = mw.spur[i];
+        var sx = view.sx(p.x), sy = view.sy(p.y);
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      /* Ruhelage, mit Nummer statt Weite — bei mehreren Würfen sonst unleserlich */
+      var r = Math.max(4, mw.R * view.skala);
+      var ex = view.sx(mw.weite);
+      ctx.strokeStyle = mw.farbe;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(ex, view.boden - r, r, 0, 6.2832);
+      ctx.stroke();
+
+      ctx.font = "600 10px 'IBM Plex Mono', ui-monospace, monospace";
+      ctx.fillStyle = mw.farbe;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(mi + 1), ex, view.boden - r);
+      ctx.textBaseline = "top";
+    }
+  }
+
+  function zeichneZielkugel(i) {
+    if (!bahn.zielKugel) return;
+    var zk = bahn.zielKugel;
+    var idx = Math.max(0, Math.min(zk.spur.length - 1, i));
+    var q = zk.spur[idx];
+    var r = Math.max(6, zk.R * view.skala);
+    var x = view.sx(q.x);
+    var y = view.sy(q.y) - (q.y === 0 ? r : 0);
+
+    /* Ausgangslage als heller Ring, solange sie verlassen wurde */
+    if (Math.abs(q.x - zk.startX) > 0.02) {
+      ctx.strokeStyle = "rgba(237,234,225,.35)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(view.sx(zk.startX), view.boden - r, r, 0, 6.2832);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,.4)";
+    ellipseBogen(x, view.boden + 1, r * 1.5, r * 0.42);
+    ctx.fill();
+
+    var g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+    g.addColorStop(0, "#F2D8B4");
+    g.addColorStop(0.45, "#C08A4E");
+    g.addColorStop(1, "#6E4A28");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 6.2832);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,240,220,.8)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+
+  function zeichneZielkugelSpur(i) {
+    if (!bahn.zielKugel) return;
+    var zk = bahn.zielKugel;
+    ctx.strokeStyle = "rgba(224,170,110,.75)";
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    var los = false, schritt = Math.max(1, Math.round(zk.spur.length / 320));
+    for (var k = 0; k <= Math.min(i, zk.spur.length - 1); k += schritt) {
+      var q = zk.spur[k];
+      if (!los) { ctx.moveTo(view.sx(q.x), view.sy(q.y)); los = true; }
+      else ctx.lineTo(view.sx(q.x), view.sy(q.y));
+    }
+    if (los) ctx.stroke();
+  }
+
+  function zeichneCochonnetSpur(i) {
+    if (!bahn.cochonnet || !bahn.cochonnet.getroffen) return;
+    var co = bahn.cochonnet;
+    ctx.strokeStyle = "rgba(208,144,43,.8)";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    var los = false, bis = Math.min(i, co.spur.length - 1);
+    var schritt = Math.max(1, Math.round(co.spur.length / 320));
+    for (var k = 0; k <= bis; k += schritt) {
+      var q = co.spur[k];
+      if (!los) { ctx.moveTo(view.sx(q.x), view.sy(q.y)); los = true; }
+      else ctx.lineTo(view.sx(q.x), view.sy(q.y));
+    }
+    if (los) ctx.stroke();
+  }
+
+  function zeichneCochonnet(i) {
+    var cx = bahn.ziel, cz = 0, rC = R_ZIEL;
+    if (bahn.cochonnet) {
+      var co = bahn.cochonnet;
+      var idx = Math.max(0, Math.min(co.spur.length - 1, i === undefined ? co.spur.length - 1 : i));
+      cx = co.spur[idx].x; cz = co.spur[idx].z; rC = co.R;
+      if (co.getroffen) {                       /* Ausgangslage als Ring */
+        var r0 = Math.max(4, rC * view.skala);
+        ctx.strokeStyle = "rgba(208,144,43,.4)";
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.arc(view.sx(co.startX), view.boden - r0, r0, 0, 6.2832);
+        ctx.stroke();
+      }
+    }
+    var x = view.sx(cx);
+    var r = Math.max(5, rC * view.skala);
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    ellipseBogen(x, view.boden + 1, r * 1.6, r * 0.5);
+    ctx.fill();
+    ctx.fillStyle = "#D0902B";
+    ctx.beginPath();
+    ctx.arc(x, view.boden - r, r, 0, 6.2832);
+    ctx.fill();
+  }
+
+  /* Die Bahn wird einmal auf höchstens 320 Stützpunkte ausgedünnt. Feiner löst kein
+     Bildschirm auf, spart aber pro Bild hunderte Linienbefehle. */
+  function baueStuetzpunkte() {
+    var ziel = 320;
+    var schritt = Math.max(1, Math.ceil(bahn.punkte.length / ziel));
+    bahn.stuetz = [];
+    for (var k = 0; k < bahn.punkte.length; k += schritt) {
+      bahn.stuetz.push({ x: bahn.punkte[k].x, y: bahn.punkte[k].y, z: bahn.punkte[k].z, i: k });
+    }
+    var letzt = bahn.punkte[bahn.punkte.length - 1];
+    bahn.stuetz.push({ x: letzt.x, y: letzt.y, z: letzt.z, i: bahn.punkte.length - 1 });
+  }
+
+  function zeichneSpur(i) {
+    if (i < 1) return;
+    if (!bahn.stuetz) baueStuetzpunkte();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(214,226,232,.78)";
+    ctx.beginPath();
+    var erster = true;
+    for (var k = 0; k < bahn.stuetz.length; k++) {
+      var p = bahn.stuetz[k];
+      if (p.i > i) break;
+      if (erster) { ctx.moveTo(view.sx(p.x), view.sy(p.y)); erster = false; }
+      else ctx.lineTo(view.sx(p.x), view.sy(p.y));
+    }
+    var akt = bahn.punkte[i];                 /* bis zur aktuellen Kugelposition verlängern */
+    if (!erster) { ctx.lineTo(view.sx(akt.x), view.sy(akt.y)); ctx.stroke(); }
+  }
+
+  function zeichneKugel(i) {
+    var p = bahn.punkte[i];
+    var r = Math.max(7, bahn.R * view.skala);   /* nie kleiner als gut sichtbar */
+    var x = view.sx(p.x);
+    var y = view.sy(p.y) - (p.y === 0 ? r : 0);
+
+    ctx.fillStyle = "rgba(0,0,0,.4)";
+    ellipseBogen(x, view.boden + 1, r * 1.5, r * 0.42);
+    ctx.fill();
+
+    var glanz = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+    glanz.addColorStop(0, "#EAF1F5");
+    glanz.addColorStop(0.45, "#B4BEC4");
+    glanz.addColorStop(1, "#5C686F");
+    ctx.fillStyle = glanz;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 6.2832);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,253,247,.85)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    if (r > 6) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-(p.w || 0));
+      ctx.strokeStyle = "rgba(30,38,42,.55)";
+      ctx.lineWidth = Math.max(0.8, r * 0.09);
+      for (var s = -1; s <= 1; s++) {
+        var off = s * r * 0.42;
+        var halb = Math.sqrt(Math.max(0, r * r - off * off)) * 0.92;
+        ctx.beginPath();
+        ctx.moveTo(-halb, off);
+        ctx.lineTo(halb, off);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function aktualisiereTelemetrie(i) {
+    var p = bahn.punkte[i];
+    el("t-zeit").textContent  = p.t.toFixed(2);
+    el("t-weite").textContent = p.x.toFixed(2);
+    el("t-hoehe").textContent = p.y.toFixed(2);
+    el("t-tempo").textContent = p.v.toFixed(1);
+    el("t-seite").textContent = (p.z >= 0 ? "+" : "−") + Math.abs(p.z).toFixed(2);
+    el("t-ende").textContent  = bahn.weite.toFixed(2);
+    el("t-ziel").textContent  = bahn.abstand.toFixed(2);
+    el("t-phase").textContent = p.phase === "flug" ? "Flug" : (p.phase === "rollen" ? "Rollen" : "Stillstand");
+  }
+
+  /* ---------- 5. Messprotokoll ---------- */
+
+  function zeigeDelta(id, jetzt, frueher, einheit, stellen) {
+    var feld = el(id);
+    if (!merkliste.length) { feld.textContent = ""; return; }
+    var d = jetzt - frueher;
+    var schwelle = stellen === 0 ? 0.5 : 0.005;
+    feld.textContent = Math.abs(d) < schwelle
+      ? "± 0 " + einheit
+      : (d > 0 ? "+" : "−") + Math.abs(d).toFixed(stellen) + " " + einheit;
+  }
+
+  function zeigeSchussfelder() {
+    el("m-schuss-feld").hidden = !zielkugelAn;
+    el("m-zk-feld").hidden = !zielkugelAn;
+    el("m-co-feld").hidden = !cochonnetAn;
+  }
+
+  function schreibeSchussfelder() {
+    if (cochonnetAn && bahn.cochonnet) {
+      var co = bahn.cochonnet;
+      el("m-co").innerHTML = co.getroffen
+        ? co.verschiebung.toFixed(2) + " <span>m → jetzt bei " + co.x.toFixed(2) + " m</span>"
+        : "– <span>nicht berührt</span>";
+    }
+    if (!zielkugelAn || !bahn.zielKugel) return;
+    var feld = el("m-schuss");
+    if (bahn.carreau) {
+      feld.className = "treffer";
+      feld.innerHTML = "Carreau <span>voll getroffen</span>";
+    } else if (bahn.treffer) {
+      feld.className = "treffer";
+      feld.innerHTML = "Treffer <span>" + (bahn.ausDemFlug ? "aus dem Flug" : "nach Aufprall") +
+        ", Schütze " + bahn.schuetzeAmZielort.toFixed(2) + " m daneben</span>";
+    } else {
+      feld.className = "";
+      feld.innerHTML = "Vorbei <span>um " + (bahn.fehlabstand * 100).toFixed(0) + " cm</span>";
+    }
+    el("m-zk").innerHTML = bahn.zielKugel.verschiebung.toFixed(2) + " <span>m</span>";
+  }
+
+  function schreibeProtokoll() {
+    var mit = function (wert, e) { return wert.toFixed(2) + " <span>" + e + "</span>"; };
+    el("m-donnee").innerHTML  = mit(bahn.donnee, "m");
+    el("m-ende").innerHTML    = mit(bahn.weite, "m");
+    el("m-rollen").innerHTML  = mit(bahn.rollweg, "m");
+    el("m-huepfer").innerHTML = bahn.aufpralle.length + " <span>×</span>";
+    el("m-krater").innerHTML  = (bahn.krater * 1000).toFixed(1) + " <span>mm</span>";
+    el("m-dauer").innerHTML   = mit(bahn.dauer, "s");
+    schreibeSchussfelder();
+    el("m-seite").innerHTML   = (bahn.seite >= 0 ? "+" : "−") + Math.abs(bahn.seite).toFixed(2) +
+      " <span>m " + (bahn.seite >= 0 ? "links" : "rechts") + "</span>";
+    var abw = bahn.weite - bahn.ziel;
+    el("m-abstand").innerHTML = bahn.abstand.toFixed(2) +
+      " <span>m " + (abw > 0.005 ? "zu weit" : (abw < -0.005 ? "zu kurz" : "")) + "</span>";
+
+    if (merkliste.length) {
+      var bas = merkliste[0];
+      zeigeDelta("d-donnee",  bahn.donnee,  bas.donnee,  "m", 2);
+      zeigeDelta("d-ende",    bahn.weite,   bas.weite,   "m", 2);
+      zeigeDelta("d-rollen",  bahn.rollweg, bas.rollweg, "m", 2);
+      zeigeDelta("d-huepfer", bahn.aufpralle.length, bas.spruenge, "×", 0);
+      zeigeDelta("d-krater",  bahn.krater * 1000, bas.krater * 1000, "mm", 1);
+      zeigeDelta("d-dauer",   bahn.dauer,   bas.dauer,   "s", 2);
+      zeigeDelta("d-seite",   bahn.seite,   bas.seite,   "m", 2);
+      zeigeDelta("d-abstand", bahn.abstand, bas.abstand, "m", 2);
+    } else {
+      ["d-donnee","d-ende","d-rollen","d-huepfer","d-krater","d-dauer","d-seite","d-abstand"]
+        .forEach(function (k) { el(k).textContent = ""; });
+    }
+  }
+
+  /* ---------- 6. Ablauf ---------- */
+
+  function neuRechnen(zeigeGanzeBahn) {
+    bahn = simuliere(parameter());
+    if (streuung) { streuung = rechneStreuung(); schreibeStreuzeile(); }
+    baueAnsicht();
+    schreibeProtokoll();
+    schreibeDeutung();
+    frameIndex = zeigeGanzeBahn ? bahn.punkte.length - 1 : 0;
+    zeichne(frameIndex);
+  }
+
+  function anhalten() {
+    laeuft = false;
+    el("werfen").textContent = "Werfen";
+  }
+
+  var bildZaehler = 0, bilderProS = 0, letzteFpsZeit = 0, fpsBilder = 0, letzterTakt = 0;
+
+  function schleife(jetzt) {
+    if (!laeuft) return;
+    letzterTakt = jetztMs();
+
+    try {
+      if ((++bildZaehler % 15) === 0) pruefeGroesse();
+
+      fpsBilder++;
+      if (jetzt - letzteFpsZeit > 500) {
+        bilderProS = fpsBilder * 1000 / (jetzt - letzteFpsZeit);
+        letzteFpsZeit = jetzt; fpsBilder = 0;
+        if (el("diag-knopf").getAttribute("aria-pressed") === "true") schreibeDiagnose();
+      }
+
+      var i = Math.floor((jetzt - startzeit) / 1000 * tempo / DT);
+      if (i >= bahn.punkte.length - 1) {
+        i = bahn.punkte.length - 1;
+        laeuft = false;
+        el("werfen").textContent = "Nochmal";
+      }
+      frameIndex = i;
+      zeichne(i);
+    } catch (e) {
+      meldeFehler(e, "Animation");
+      laeuft = false;
+      el("werfen").textContent = "Werfen";
+      return;
+    }
+    if (laeuft) requestAnimationFrame(schleife);
+  }
+
+  /* Wachhund: bleibt die Schleife stehen, wird das nicht stumm verschluckt,
+     sondern der Wurf am Stück angezeigt und der Knopf zurückgesetzt. */
+  setInterval(function () {
+    if (!laeuft) return;
+    if (jetztMs() - letzterTakt < 1500) return;
+    laeuft = false;
+    el("werfen").textContent = "Nochmal";
+    frameIndex = bahn ? bahn.punkte.length - 1 : 0;
+    zeichne(frameIndex);
+    meldeFehler("Die Animation wurde angehalten (keine Bilder mehr vom Browser). " +
+                "Der Wurf ist vollständig berechnet und wird als Ganzes gezeigt.", "Wachhund");
+  }, 1000);
+
+  function werfen() {
+    saatWurf = (saatWurf * 1103515245 + 12345) % 2147483648;
+    if (saatWurf < 0) saatWurf += 2147483648;
+    neuRechnen(false);
+    laeuft = true;
+    el("werfen").textContent = "Läuft …";
+    startzeit = jetztMs();
+    requestAnimationFrame(schleife);
+  }
+
+  /* ---------- 7. Verdrahtung ---------- */
+
+  ["v0", "winkel", "y0", "ziel", "masse", "durchmesser", "drall", "verdrehung",
+   "anzahl", "streuV", "streuW", "zkx", "zkz", "zkm", "zkd", "richtung",
+   "cm", "cd"].forEach(function (id) {
+    el(id).addEventListener("input", function () {
+      anhalten(); beschrifteRegler(); neuRechnen(true);
+    });
+  });
+
+  ["e", "mu", "haerte", "korn"].forEach(function (id) {
+    el(id).addEventListener("input", function () {
+      aktiverBoden = null;        /* eigene Mischung, Kalibrierpunkt bleibt stehen */
+      markiereBoden();
+      anhalten(); beschrifteRegler(); streueKies(); neuRechnen(true);
+    });
+  });
+
+  function rechneStreuung() {
+    var grund = parameter(), i, o;
+    var N = grund.anzahl;
+    streuN = N;
+
+    var xs = [], zs = [], abst = [], treffer = 0, halbmeter = 0, zMax = 0, mAbst = 0;
+    var sTreffer = 0, sCarreau = 0, sVersch = 0;
+    var wuerfel = saatQuelle(4711);
+
+    for (i = 0; i < N; i++) {
+      var p = parameter();
+      p.saat = 100003 + i * 7919;
+      /* Der Werfer trifft nie zweimal exakt dasselbe: normalverteilte Abweichung
+         auf Abwurfgeschwindigkeit und -winkel. */
+      if (grund.streuV > 0) p.v0 = Math.max(0.5, p.v0 + normalverteilt(wuerfel) * grund.streuV);
+      if (grund.streuW > 0) p.winkel = p.winkel + normalverteilt(wuerfel) * grund.streuW;
+
+      o = simuliere(p, true);
+      if (o.treffer) sTreffer++;
+      if (o.carreau) sCarreau++;
+      if (o.zielKugel) sVersch += o.zielKugel.verschiebung;
+      xs.push(o.weite); zs.push(o.seite); abst.push(o.abstand);
+      mAbst += o.abstand;
+      if (Math.abs(o.seite) > zMax) zMax = Math.abs(o.seite);
+      if (o.abstand < 0.30) treffer++;
+      if (o.abstand < 0.50) halbmeter++;
+    }
+    mAbst /= N;
+
+    var mx = 0, mz = 0;
+    for (i = 0; i < N; i++) { mx += xs[i]; mz += zs[i]; }
+    mx /= N; mz /= N;
+    var sx = 0, sz = 0;
+    for (i = 0; i < N; i++) { sx += (xs[i]-mx)*(xs[i]-mx); sz += (zs[i]-mz)*(zs[i]-mz); }
+    sx = Math.sqrt(sx / N); sz = Math.sqrt(sz / N);
+
+    /* Perzentile des Zielabstands: aussagekräftiger als der Mittelwert allein */
+    var sortiert = abst.slice().sort(function (a, b) { return a - b; });
+    var perz = function (q) { return sortiert[Math.min(N - 1, Math.floor(q * N))]; };
+
+    var punkte = [];
+    for (i = 0; i < N; i++) punkte.push({ x: xs[i], z: zs[i] });
+    return { punkte: punkte, n: N, mx: mx, mz: mz, sx: sx, sz: sz, zMax: zMax,
+             mAbst: mAbst, median: perz(0.5), p90: perz(0.9),
+             treffer: treffer / N, halbmeter: halbmeter / N,
+             schuss: grund.zielkugel,
+             quote: sTreffer / N, carreau: sCarreau / N,
+             versch: sTreffer ? sVersch / sTreffer : 0 };
+  }
+
+  function schreibeStreuzeile() {
+    var zeile = el("streu-zeile");
+    zeile.hidden = !streuung;
+    if (!streuung) return;
+    if (streuung.schuss) {
+      zeile.textContent = streuung.n + " Schüsse · " +
+        Math.round(streuung.quote * 100) + " % Treffer, davon " +
+        Math.round(streuung.carreau * 100) + " % Carreau · Zielkugel im Mittel " +
+        streuung.versch.toFixed(2) + " m verschoben · Schütze landet " +
+        streuung.mx.toFixed(2) + " ± " + streuung.sx.toFixed(2) + " m";
+      return;
+    }
+    zeile.textContent = streuung.n + " Würfe · Weite " + streuung.mx.toFixed(2) + " ± " +
+      streuung.sx.toFixed(2) + " m · seitlich ± " + streuung.sz.toFixed(2) +
+      " m · Zielabstand Median " + streuung.median.toFixed(2) +
+      " m, 9 von 10 unter " + streuung.p90.toFixed(2) + " m · " +
+      Math.round(streuung.treffer * 100) + " % unter 30 cm, " +
+      Math.round(streuung.halbmeter * 100) + " % unter 50 cm";
+  }
+
+  function zeigeStreuung() {
+    var knopf = el("streuung");
+    knopf.setAttribute("aria-pressed", streuung ? "true" : "false");
+    knopf.textContent = streuung ? "Serie ausblenden" : "Serie simulieren";
+    schreibeStreuzeile();
+    baueSichtOben();
+    zeichne(frameIndex);
+  }
+
+  function beschreibeWurf() {
+    var p = parameter();
+    var t = Math.round(p.m * 1000) + " g · " + p.v0.toFixed(1) + " m/s · " + p.winkel.toFixed(0) + "°";
+    if (Math.abs(p.durchmesser - 74) > 0.01) t += " · " + p.durchmesser.toFixed(1) + " mm";
+    if (Math.abs(p.y0 - 1.40) > 0.001) t += " · " + p.y0.toFixed(2) + " m hoch";
+    if (p.drall > 0.05) {
+      t += " · " + p.drall.toFixed(1) + " U/s";
+      if (Math.abs(p.verdrehung) > 0.5) t += " bei " + p.verdrehung.toFixed(0) + "°";
+    }
+    t += " · " + (aktiverBoden === null ? "eigener Boden" : BOEDEN[aktiverBoden].name);
+    return t;
+  }
+
+  function merkeWurf() {
+    var spur = [], schritt = Math.max(1, Math.round(bahn.punkte.length / 400));
+    for (var i = 0; i < bahn.punkte.length; i += schritt) {
+      spur.push({ x: bahn.punkte[i].x, y: bahn.punkte[i].y });
+    }
+    spur.push({ x: bahn.weite, y: 0 });
+    var spurOben = [], zMax = 0;
+    for (var j = 0; j < bahn.punkte.length; j += schritt) {
+      spurOben.push({ x: bahn.punkte[j].x, z: bahn.punkte[j].z });
+      if (Math.abs(bahn.punkte[j].z) > zMax) zMax = Math.abs(bahn.punkte[j].z);
+    }
+    spurOben.push({ x: bahn.weite, z: bahn.seite });
+
+    if (merkliste.length >= MERK_MAX) merkliste.shift();   /* ältesten verdrängen */
+    merkliste.push({
+      spur: spur, spurOben: spurOben, seiteMax: zMax,
+      weite: bahn.weite, seite: bahn.seite, abstand: bahn.abstand,
+      donnee: bahn.donnee, rollweg: bahn.rollweg,
+      dauer: bahn.dauer, krater: bahn.krater, hMax: bahn.hMax, R: bahn.R,
+      ziel: bahn.ziel, spruenge: bahn.aufpralle.length, text: beschreibeWurf(),
+      farbe: "#000"
+    });
+    faerbeMerkliste();
+    zeigeVergleich();
+  }
+
+  function faerbeMerkliste() {
+    for (var i = 0; i < merkliste.length; i++) merkliste[i].farbe = FARBEN[i % FARBEN.length];
+  }
+
+  function loescheMerk(i) {
+    merkliste.splice(i, 1);
+    faerbeMerkliste();
+    zeigeVergleich();
+  }
+
+  function zeigeVergleich() {
+    var knopf = el("merken");
+    knopf.setAttribute("aria-pressed", merkliste.length ? "true" : "false");
+    knopf.textContent = merkliste.length
+      ? "Wurf merken (" + merkliste.length + "/" + MERK_MAX + ")"
+      : "Wurf merken";
+
+    el("leeren").hidden = !merkliste.length;
+    baueVergleichstabelle();
+
+    hgGueltig = false;
+    baueAnsicht();
+    schreibeProtokoll();
+    zeichne(frameIndex);
+  }
+
+  function baueVergleichstabelle() {
+    var kasten = el("vergleich");
+    kasten.hidden = !merkliste.length;
+    if (!merkliste.length) { kasten.innerHTML = ""; return; }
+
+    var basis = merkliste[0];
+    var zeilen = "";
+    var i, w;
+
+    for (i = 0; i < merkliste.length; i++) {
+      w = merkliste[i];
+      zeilen += "<tr>" +
+        "<td><span class='punkt' style='background:" + w.farbe + "'></span>" + (i + 1) + "</td>" +
+        "<td class='beschr'>" + w.text + "</td>" +
+        "<td>" + w.donnee.toFixed(2) + "</td>" +
+        "<td>" + w.weite.toFixed(2) + "</td>" +
+        "<td>" + w.rollweg.toFixed(2) + "</td>" +
+        "<td>" + (w.seite >= 0 ? "+" : "−") + Math.abs(w.seite).toFixed(2) + "</td>" +
+        "<td>" + w.abstand.toFixed(2) + "</td>" +
+        "<td class='abw'>" + diffText(w.weite - basis.weite) + "</td>" +
+        "<td><button type='button' class='weg' data-nr='" + i + "' " +
+            "aria-label='Wurf " + (i + 1) + " entfernen'>×</button></td>" +
+        "</tr>";
+    }
+
+    zeilen += "<tr class='jetzt'>" +
+      "<td><span class='punkt hell'></span>–</td>" +
+      "<td class='beschr'>aktueller Wurf</td>" +
+      "<td>" + bahn.donnee.toFixed(2) + "</td>" +
+      "<td>" + bahn.weite.toFixed(2) + "</td>" +
+      "<td>" + bahn.rollweg.toFixed(2) + "</td>" +
+      "<td>" + (bahn.seite >= 0 ? "+" : "−") + Math.abs(bahn.seite).toFixed(2) + "</td>" +
+      "<td>" + bahn.abstand.toFixed(2) + "</td>" +
+      "<td class='abw'>" + diffText(bahn.weite - basis.weite) + "</td>" +
+      "<td></td></tr>";
+
+    kasten.innerHTML =
+      "<table><thead><tr>" +
+      "<th>Nr</th><th class='beschr'>Einstellung</th><th>Donnée</th><th>Ende</th>" +
+      "<th>Rollweg</th><th>seitl.</th><th>zum Ziel</th><th>Δ Ende</th><th></th>" +
+      "</tr></thead><tbody>" + zeilen + "</tbody></table>" +
+      "<p class='hinweis'>Alle Längen in Metern. Δ Ende bezieht sich auf Wurf 1.</p>";
+
+    var knoepfe = kasten.getElementsByClassName("weg");
+    for (i = 0; i < knoepfe.length; i++) {
+      knoepfe[i].addEventListener("click", function () {
+        loescheMerk(parseInt(this.getAttribute("data-nr"), 10));
+      });
+    }
+  }
+
+  function diffText(d) {
+    if (Math.abs(d) < 0.005) return "± 0";
+    return (d > 0 ? "+" : "−") + Math.abs(d).toFixed(2);
+  }
+
+  function schreibeDiagnose() {
+    var d = el("diagnose");
+    if (d.hidden) return;
+    var k = canvas.getBoundingClientRect();
+    var o = obenLeinwand.getBoundingClientRect();
+    d.textContent =
+      "Fenster       " + window.innerWidth + " x " + window.innerHeight + " CSS-px\n" +
+      "Pixeldichte   " + (window.devicePixelRatio || 1) + "\n" +
+      "Seitenansicht " + Math.round(k.width) + " x " + Math.round(k.height) +
+        "  (Puffer " + canvas.width + " x " + canvas.height + ")\n" +
+      "Draufsicht    " + Math.round(o.width) + " x " + Math.round(o.height) + "\n" +
+      "Maßstab x     " + (view ? view.skala.toFixed(1) + " px/m" : "—") +
+        "   sichtbar " + (view ? view.xSpanne.toFixed(1) + " m" : "—") + "\n" +
+      "Maßstab y     " + (view ? view.skalaY.toFixed(1) + " px/m" : "—") +
+        "   Bogen bis " + (view ? view.ySpanne.toFixed(2) + " m" : "—") + "\n" +
+      "Bahnpunkte    " + (bahn && bahn.punkte ? bahn.punkte.length : 0) +
+        "   Bild " + frameIndex + "\n" +
+      "Bilder/s      " + bilderProS.toFixed(0) + (laeuft ? "  (läuft)" : "  (steht)") + "\n" +
+      "Körner        " + kies.length + " + " + halme.length + " Halme\n" +
+      "Drall         " + parameter().drall.toFixed(1) + " U/s bei " +
+        parameter().verdrehung.toFixed(0) + "°\n" +
+      "Letzter Fehler " + (letzterFehler || "keiner");
+  }
+
+  el("einklappen").addEventListener("click", function () {
+    var zu = el("pult").classList.toggle("eingeklappt");
+    this.setAttribute("aria-pressed", zu ? "true" : "false");
+    this.textContent = zu ? "Bedienung zeigen" : "Nur Spielfeld";
+    planeMessung();
+  });
+
+  el("diag-knopf").addEventListener("click", function () {
+    var an = el("diagnose").hidden;
+    el("diagnose").hidden = !an;
+    this.setAttribute("aria-pressed", an ? "true" : "false");
+    if (an) schreibeDiagnose();
+  });
+
+  el("streuung").addEventListener("click", function () {
+    streuung = streuung ? null : rechneStreuung();
+    zeigeStreuung();
+  });
+
+  el("cochonnetkoerper").addEventListener("click", function () {
+    cochonnetAn = !cochonnetAn;
+    this.setAttribute("aria-pressed", cochonnetAn ? "true" : "false");
+    zeigeSchussfelder();
+    anhalten(); beschrifteRegler(); neuRechnen(true);
+  });
+
+  el("zielkugel").addEventListener("click", function () {
+    zielkugelAn = !zielkugelAn;
+    this.setAttribute("aria-pressed", zielkugelAn ? "true" : "false");
+    this.textContent = zielkugelAn ? "Zielkugel im Spiel" : "Zielkugel im Spiel";
+    zeigeSchussfelder();
+    anhalten(); beschrifteRegler(); neuRechnen(true);
+  });
+
+  el("hilfe-schuss").addEventListener("click", function () {
+    var offen = el("erklaerung-schuss").classList.toggle("offen");
+    this.setAttribute("aria-expanded", offen ? "true" : "false");
+    this.textContent = offen ? "Erklärung ausblenden" : "Wie wird gerechnet?";
+    planeMessung();
+  });
+
+  el("hilfe-serie").addEventListener("click", function () {
+    var offen = el("erklaerung-serie").classList.toggle("offen");
+    this.setAttribute("aria-expanded", offen ? "true" : "false");
+    this.textContent = offen ? "Erklärung ausblenden" : "Wozu?";
+    planeMessung();
+  });
+
+  el("hilfe-hand").addEventListener("click", function () {
+    var offen = el("erklaerung-hand").classList.toggle("offen");
+    this.setAttribute("aria-expanded", offen ? "true" : "false");
+    this.textContent = offen ? "Erklärung ausblenden" : "Was bewirkt das?";
+    planeMessung();
+  });
+
+  el("hilfe-boden").addEventListener("click", function () {
+    var offen = el("erklaerung").classList.toggle("offen");
+    this.setAttribute("aria-expanded", offen ? "true" : "false");
+    this.textContent = offen ? "Erklärung ausblenden" : "Was bedeuten die Werte?";
+    if (offen) {
+      el("pult").classList.remove("eingeklappt");
+      el("einklappen").setAttribute("aria-pressed", "false");
+      el("einklappen").textContent = "Nur Spielfeld";
+    }
+    planeMessung();                 /* das Pult wird höher, das Spielfeld muss nachziehen */
+  });
+
+  el("merken").addEventListener("click", merkeWurf);
+
+  el("leeren").addEventListener("click", function () {
+    merkliste = [];
+    zeigeVergleich();
+  });
+
+  el("werfen").addEventListener("click", werfen);
+
+  el("tempo").addEventListener("click", function () {
+    tempo = tempo === 1 ? 0.25 : (tempo === 0.25 ? 0.1 : 1);
+    this.textContent = "Tempo " + (tempo === 1 ? "1×" : (tempo === 0.25 ? "¼×" : "⅒×"));
+    if (laeuft) startzeit = jetztMs() - (frameIndex * DT * 1000) / tempo;
+  });
+
+  el("zuruecksetzen").addEventListener("click", function () {
+    el("fehlerleiste").hidden = true;
+    letzterFehler = "";
+    Object.keys(STANDARD).forEach(function (k) { el(k).value = STANDARD[k]; });
+    waehleBoden(STANDARD_BODEN);
+  });
+
+  window.addEventListener("resize", planeMessung);
+  window.addEventListener("orientationchange", function () { setTimeout(passeGroesseAn, 300); });
+  window.addEventListener("load", planeMessung);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) planeMessung();
+  });
+
+  /* Der Container kann sich ohne resize-Ereignis ändern: eingebettete Vorschau,
+     ein- und ausfahrende Adressleiste auf dem Handy, Fensterkacheln. */
+  if (window.ResizeObserver) {
+    new ResizeObserver(planeMessung).observe(el("piste"));
+  } else {
+    setInterval(pruefeGroesse, 500);
+  }
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(planeMessung);      /* Schriften ändern die Kopf- und Pulthöhe */
+  }
+
+  setzeMassstabsfaktoren();
+  baueBodenwahl();
+  beschrifteRegler();
+  bahn = simuliere(parameter());
+  passeGroesseAn();
+  schreibeProtokoll();
+  frameIndex = bahn.punkte.length - 1;
+  zeichne(frameIndex);
+  requestAnimationFrame(function () { requestAnimationFrame(passeGroesseAn); });
+  if (!sanft) setTimeout(function () { passeGroesseAn(); werfen(); }, 450);
+})();
+</script>
