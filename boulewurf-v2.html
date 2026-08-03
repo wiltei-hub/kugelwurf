@@ -133,6 +133,13 @@
   }
   #reglerbereich { display: block; }
 
+  /* Im Modus „Nur Spielfeld" teilen sich Seiten- und Draufsicht die frei
+     gewordene Höhe. Die Draufsicht bekommt den größeren Anteil, weil die
+     seitlichen Abweichungen sonst nur wenige Pixel ausmachen. */
+  body.nurfeld #piste { flex: 1 1 0; min-height: 90px; }
+  body.nurfeld #draufsicht-box { flex: 1.4 1 0; height: auto; min-height: 110px; }
+  body.nurfeld .achsentitel { display: block; }
+
   #reiter {
     display: flex; flex-wrap: wrap; gap: 6px;
     padding: calc(8px * var(--s)) 18px calc(4px * var(--s));
@@ -1606,8 +1613,10 @@
     c.font = "9px 'IBM Plex Mono', ui-monospace, monospace";
     c.textBaseline = "middle";
     c.textAlign = "left";
-    var raster = S.zMax > 1.2 ? 1 : (S.zMax > 0.5 ? 0.5 : 0.2);
-    for (var q = -3; q <= 3; q++) {
+    /* Bei genügend Auflösung feiner rastern — im Modus „Nur Spielfeld" wächst
+       die Draufsicht, und dann sind halbe Meter ablesbar. */
+    var raster = S.skalaZ > 45 ? 0.5 : 1;
+    for (var q = -Math.ceil(S.zMax / raster); q <= Math.ceil(S.zMax / raster); q++) {
       var zz = q * raster;
       if (Math.abs(zz) > S.zMax) continue;
       var yy = S.sz(zz);
@@ -2866,6 +2875,7 @@
 
   el("einklappen").addEventListener("click", function () {
     var zu = el("pult").classList.toggle("eingeklappt");
+    document.body.classList.toggle("nurfeld", zu);
     this.setAttribute("aria-pressed", zu ? "true" : "false");
     this.textContent = zu ? "Bedienung zeigen" : "Nur Spielfeld";
     planeMessung();
@@ -2973,6 +2983,7 @@
     this.textContent = offen ? "Erklärung ausblenden" : "Was bedeuten die Werte?";
     if (offen) {
       el("pult").classList.remove("eingeklappt");
+      document.body.classList.remove("nurfeld");
       el("einklappen").setAttribute("aria-pressed", "false");
       el("einklappen").textContent = "Nur Spielfeld";
     }
