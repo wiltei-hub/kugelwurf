@@ -222,6 +222,8 @@
     background: radial-gradient(circle at 32% 30%, #E6EDF1, var(--steel) 55%, #63707A); border: none; cursor: pointer;
   }
   input[type=range]:focus-visible { outline: 2px solid var(--steel); outline-offset: 4px; }
+  input[type=range]:disabled { opacity: .35; cursor: not-allowed; }
+  .regel.stumm label, .regel.stumm output { opacity: .45; }
   /* Auf Fingerbedienung bleibt die Grifffläche groß, obwohl die Reihen enger stehen. */
   @media (pointer: coarse) {
     input[type=range] { height: 30px; }
@@ -256,7 +258,8 @@
   #erklaerung, #erklaerung-hand, #erklaerung-serie, #erklaerung-schuss { display: none; margin: 4px 0 8px; }
   #erklaerung.offen, #erklaerung-hand.offen, #erklaerung-serie.offen,
   #erklaerung-schuss.offen { display: block; }
-  #schussschalter, #schussschalter2 { margin: 4px 0 2px; }
+  #schussschalter, #schussschalter2, #handhaltung { margin: 4px 0 2px; }
+  #handhaltung { display: flex; flex-wrap: wrap; gap: 7px; }
   .gruppenhinweis {
     margin: 5px 0 0; font-size: max(9.5px, calc(11px * var(--fs)));
     line-height: 1.45; color: #6E7A6E;
@@ -568,12 +571,16 @@
 
   <section class="gruppe" id="g-hand" data-reiter="Hand">
     <h2>Hand <button type="button" class="hilfe" id="hilfe-hand" aria-expanded="false" aria-controls="erklaerung-hand">Was bewirkt das?</button></h2>
+    <div id="handhaltung" role="group" aria-label="Haltung der Wurfhand">
+      <button type="button" class="boden" id="hand-oben" aria-pressed="true">Handrücken oben</button>
+      <button type="button" class="boden" id="hand-unten" aria-pressed="false">Handfläche oben</button>
+    </div>
     <div class="regler">
       <div class="regel">
         <label for="drall">Drall beim Abwurf <span class="franz">Rétro</span></label><output id="drall-wert"></output>
         <input type="range" id="drall" min="0" max="20" step="0.5" value="0">
       </div>
-      <div class="regel">
+      <div class="regel" id="regel-verdrehung">
         <label for="verdrehung">Verdrehung der Wurfhand</label><output id="verdrehung-wert"></output>
         <input type="range" id="verdrehung" min="-90" max="90" step="5" value="0">
       </div>
@@ -589,8 +596,13 @@
           bewegt bei 10 U/s nur wenige Zentimeter. Er wirkt beim <em>Aufprall</em>: der Kontaktpunkt
           gleitet, und die Reibung wandelt Drall in Geschwindigkeit um. Rückwärtsdrall bremst,
           Seitendrall lenkt ab.</p>
+        <p><b>Handrücken oben</b> — im Boule die übliche Haltung — löst die Kugel über die
+          Finger und gibt ihr Rückwärtsdrall: sie beißt sich beim Aufsetzen fest und
+          verkürzt den Wurf. <b>Handfläche oben</b> dreht den Drallsinn um; die Kugel rollt
+          beim Lösen vorwärts ab, nimmt beim Aufprall Fahrt auf und läuft weiter.</p>
         <p class="spanne">Übliche Werte: 0 U/s beim Rollwurf · 6–10 U/s beim Portée · 12–20 U/s beim harten Rétro</p>
         <p class="deutung" id="deutung-hand"></p>
+        <p class="deutung" id="wirkung-hand"></p>
       </div>
     </div>
   </section>
@@ -795,6 +807,11 @@
   var streuN = 100;
   /* Beim Start läuft ein Wurf, der beide Ziele trifft: die Kugel rollt über das
      Cochonnet bei 7,70 m hinweg und stößt danach die Zielkugel bei 8,50 m an. */
+  /* Handrücken oben ("main en dessus") löst die Kugel über die Finger und erzeugt
+     Rückwärtsdrall — die übliche Haltung beim Legen. Handfläche oben
+     ("main en dessous") dreht den Drallsinn um: die Kugel rollt vorwärts ab. */
+  var handRuecken = true;
+
   var zielkugelAn = true;
   var cochonnetAn = true;
 
@@ -1113,7 +1130,7 @@
     var az = (p.richtung || 0) * Math.PI / 180;
     var vh0 = p.v0 * Math.cos(rad);
 
-    var om = p.drall * 2 * Math.PI;
+    var om = p.drall * 2 * Math.PI * (p.handSinn || 1);
     var gam = p.verdrehung * Math.PI / 180;
 
     var rnd = saatQuelle(p.saat);
@@ -1278,6 +1295,7 @@
       haerte:      Math.pow(10, parseFloat(el("haerte").value)),
       korn:        parseFloat(el("korn").value),
       drall:       parseFloat(el("drall").value),
+      handSinn:    handRuecken ? 1 : -1,
       zielkugel:      zielkugelAn,
       cochonnetKoerper: cochonnetAn,
       cm:          parseFloat(el("cm").value),
@@ -1351,11 +1369,36 @@
         (p.streuV * 1.35 + p.streuW * 0.10).toFixed(2) +
         " m — der Untergrund kommt dazu.";
 
+    /* Ohne Drall hat die Verdrehung nichts zu drehen. Der Regler wird gesperrt,
+       damit nicht der Eindruck entsteht, er sei wirkungslos. */
+    var ohneDrall = p.drall < 0.05;
+    el("verdrehung").disabled = ohneDrall;
+    el("regel-verdrehung").classList.toggle("stumm", ohneDrall);
+
     el("deutung-hand").textContent = p.drall < 0.05
       ? "Ohne Drall wirkt die Handverdrehung nicht — die Achse hat nichts zu drehen."
       : "Bei " + p.drall.toFixed(1) + " U/s läuft die Oberfläche mit " + uOben.toFixed(1) +
-        " m/s um. Davon wirken " + Math.round(anteilRueck * 100) + " % als Rückwärtsdrall (bremst) und " +
+        " m/s um. Davon wirken " + Math.round(anteilRueck * 100) + " % als " +
+        (handRuecken ? "Rückwärtsdrall (bremst)" : "Vorwärtsdrall (trägt weiter)") + " und " +
         Math.round((1 - anteilRueck) * 100) + " % als Seitendrall (lenkt ab).";
+
+    /* Was die Verdrehung an diesem Wurf konkret ausmacht: derselbe Wurf mit
+       demselben Zufallskeim, nur ohne Verdrehung — die Differenz ist ihr
+       reiner Beitrag. */
+    var feld = el("wirkung-hand");
+    if (!bahn || ohneDrall || Math.abs(p.verdrehung) < 0.5) {
+      feld.textContent = "";
+      return;
+    }
+    var q = parameter();
+    q.verdrehung = 0;
+    var ohne = simuliere(q, true);
+    var dz = bahn.seite - ohne.seite;
+    var dx = bahn.weite - ohne.weite;
+    feld.textContent = "An diesem Wurf: " +
+      (dz >= 0 ? "+" : "−") + Math.abs(dz * 100).toFixed(0) + " cm zur Seite, " +
+      (dx >= 0 ? "+" : "−") + Math.abs(dx * 100).toFixed(0) + " cm in der Länge — " +
+      "gegenüber demselben Wurf ohne Verdrehung.";
   }
 
   function beschrifteRegler() {
@@ -2860,6 +2903,15 @@
     planeMessung();
   });
 
+  function waehleHand(ruecken) {
+    handRuecken = ruecken;
+    el("hand-oben").setAttribute("aria-pressed", ruecken ? "true" : "false");
+    el("hand-unten").setAttribute("aria-pressed", ruecken ? "false" : "true");
+    anhalten(); beschrifteRegler(); neuRechnen(true);
+  }
+  el("hand-oben").addEventListener("click", function () { waehleHand(true); });
+  el("hand-unten").addEventListener("click", function () { waehleHand(false); });
+
   el("hilfe-hand").addEventListener("click", function () {
     var offen = el("erklaerung-hand").classList.toggle("offen");
     this.setAttribute("aria-expanded", offen ? "true" : "false");
@@ -2897,6 +2949,7 @@
   el("zuruecksetzen").addEventListener("click", function () {
     el("fehlerleiste").hidden = true;
     letzterFehler = "";
+    waehleHand(true);
     zielkugelAn = true;  el("zielkugel").setAttribute("aria-pressed", "true");
     cochonnetAn = true;  el("cochonnetkoerper").setAttribute("aria-pressed", "true");
     zeigeSchussfelder();
