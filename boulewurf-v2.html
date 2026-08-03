@@ -104,12 +104,31 @@
 
   #diagnose {
     position: absolute; right: 12px; bottom: 12px; margin: 0;
-    background: rgba(14,16,14,.88); color: var(--chalk);
+    max-width: calc(100% - 24px); max-height: calc(100% - 46px);
+    overflow: auto;
+    background: rgba(14,16,14,.92); color: var(--chalk);
     font-family: var(--f-mono); font-size: 10.5px; line-height: 1.5;
     padding: 9px 12px; border-left: 2px solid var(--ochre);
     white-space: pre; pointer-events: none; z-index: 4;
   }
   #diagnose[hidden] { display: none; }
+
+  /* Auf Tablet und Handy ist die Seitenansicht zu flach für elf Zeilen. Dort
+     legt sich die Diagnose als eigene Fläche über die Anwendung, bricht lange
+     Zeilen um und lässt sich bei Bedarf schieben. */
+  @media (max-width: 900px), (max-height: 620px) {
+    #diagnose {
+      position: fixed; left: 8px; right: 8px; bottom: 8px; top: auto;
+      max-width: none; max-height: 62vh;
+      overflow: auto; -webkit-overflow-scrolling: touch;
+      pointer-events: auto;
+      white-space: pre-wrap; word-break: break-word;
+      font-size: 10.5px; line-height: 1.5; padding: 9px 12px;
+      background: rgba(14,16,14,.97);
+      box-shadow: 0 6px 24px rgba(0,0,0,.55);
+      z-index: 30;
+    }
+  }
 
   #draufsicht-box {
     position: relative; flex: 1 1 0;
@@ -137,11 +156,10 @@
   }
   #reglerbereich { display: block; }
 
-  /* Im Modus „Nur Spielfeld" teilen sich Seiten- und Draufsicht die frei
-     gewordene Höhe. Die Draufsicht bekommt den größeren Anteil, weil die
-     seitlichen Abweichungen sonst nur wenige Pixel ausmachen. */
-  body.nurfeld #piste { flex: 1 1 0; min-height: 90px; }
-  body.nurfeld #draufsicht-box { flex: 1.6 1 0; min-height: 120px; }
+  /* Im Modus „Nur Spielfeld" behält die Seitenansicht genau die Höhe, die sie
+     mit eingeblendetem Pult hatte — festgehalten als Anteil der Fensterhöhe.
+     Der frei gewordene Platz geht vollständig an die Draufsicht. */
+  body.nurfeld #draufsicht-box { flex: 1 1 0; min-height: 120px; }
   body.nurfeld .achsentitel { display: block; }
 
   #reiter {
@@ -368,6 +386,18 @@
     background: var(--vergleich); color: var(--terrain-deep); box-shadow: none;
   }
   #m-treffer dd { color: var(--ochre); }
+
+  @media (max-width: 620px) {
+    /* Elf Messwerte in Spalten zu quetschen ergäbe fünf Zeilen. Auf schmalen
+       Geräten bleiben sie in einer Reihe und lassen sich waagerecht schieben. */
+    #protokoll {
+      grid-auto-flow: column;
+      grid-template-columns: none;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .messwert { min-width: 104px; }
+  }
+
   .messwert.schuss[hidden] { display: none; }
   #m-schuss dd, #m-schuss { color: var(--abwurf); }
   #m-schuss.treffer { color: #8FC48A; }
@@ -1859,6 +1889,7 @@
 
   function passeGroesseAn() {
     setzeMassstabsfaktoren();
+    haltePisteHoehe();
     var dpr = window.devicePixelRatio || 1;
     var kasten = canvas.getBoundingClientRect();
     if (kasten.width < 2 || kasten.height < 2) return;   /* Layout noch nicht fertig */
@@ -2858,6 +2889,26 @@
     if (d.hidden) return;
     var k = canvas.getBoundingClientRect();
     var o = obenLeinwand.getBoundingClientRect();
+
+    /* Schmale Schirme bekommen eine kurze Fassung — sonst laufen die Zeilen
+       über den Rand hinaus und die unteren Werte sind nicht mehr lesbar. */
+    if (window.innerWidth < 820 || window.innerHeight < 620) {
+      d.textContent =
+        window.innerWidth + "x" + window.innerHeight + " · dpr " +
+          (window.devicePixelRatio || 1).toFixed(2) + "\n" +
+        "Seite " + Math.round(k.width) + "x" + Math.round(k.height) +
+          " (" + canvas.width + "x" + canvas.height + ")\n" +
+        "Drauf " + Math.round(o.width) + "x" + Math.round(o.height) + "\n" +
+        "x " + (view ? view.skala.toFixed(1) + " px/m · " + view.xSpanne.toFixed(1) + " m" : "—") + "\n" +
+        "y " + (view ? view.skalaY.toFixed(1) + " px/m · " + view.ySpanne.toFixed(2) + " m" : "—") + "\n" +
+        "Punkte " + (bahn && bahn.punkte ? bahn.punkte.length : 0) + " · Bild " + frameIndex + "\n" +
+        bilderProS.toFixed(0) + " B/s " + (laeuft ? "(läuft)" : "(steht)") + "\n" +
+        "Korn " + kies.length + "+" + halme.length + " · Drall " +
+          parameter().drall.toFixed(1) + "@" + parameter().verdrehung.toFixed(0) + "°\n" +
+        "Fehler: " + (letzterFehler || "keiner");
+      return;
+    }
+
     d.textContent =
       "Fenster       " + window.innerWidth + " x " + window.innerHeight + " CSS-px\n" +
       "Pixeldichte   " + (window.devicePixelRatio || 1) + "\n" +
@@ -2877,9 +2928,30 @@
       "Letzter Fehler " + (letzterFehler || "keiner");
   }
 
+  var pisteAnteil = 0;      /* Höhe der Seitenansicht als Anteil am Fenster */
+
+  function haltePisteHoehe() {
+    var e = el("piste");
+    if (document.body.classList.contains("nurfeld")) {
+      if (pisteAnteil > 0) {
+        e.style.flex = "0 0 " + Math.round(pisteAnteil * window.innerHeight) + "px";
+      }
+    } else {
+      e.style.flex = "";
+    }
+  }
+
   el("einklappen").addEventListener("click", function () {
-    var zu = el("pult").classList.toggle("eingeklappt");
+    var zu = !el("pult").classList.contains("eingeklappt");
+    if (zu) {
+      /* Vor dem Einklappen die aktuelle Höhe merken, damit die Seitenansicht
+         danach unverändert bleibt. */
+      var h = el("piste").getBoundingClientRect().height;
+      if (h > 20) pisteAnteil = h / (window.innerHeight || 1);
+    }
+    el("pult").classList.toggle("eingeklappt", zu);
     document.body.classList.toggle("nurfeld", zu);
+    haltePisteHoehe();
     this.setAttribute("aria-pressed", zu ? "true" : "false");
     this.textContent = zu ? "Bedienung zeigen" : "Nur Spielfeld";
     planeMessung();
@@ -2988,6 +3060,7 @@
     if (offen) {
       el("pult").classList.remove("eingeklappt");
       document.body.classList.remove("nurfeld");
+      haltePisteHoehe();
       el("einklappen").setAttribute("aria-pressed", "false");
       el("einklappen").textContent = "Nur Spielfeld";
     }
