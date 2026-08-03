@@ -476,7 +476,7 @@
       </div>
       <div class="regel">
         <label for="zielz">Seitliche Lage</label><output id="zielz-wert"></output>
-        <input type="range" id="zielz" min="-1.5" max="1.5" step="0.01" value="0">
+        <input type="range" id="zielz" min="-1.4" max="1.4" step="0.01" value="0">
       </div>
       <div class="regel">
         <label for="cm">Masse</label><output id="cm-wert"></output>
@@ -503,7 +503,7 @@
       </div>
       <div class="regel">
         <label for="zkz">Seitliche Lage</label><output id="zkz-wert"></output>
-        <input type="range" id="zkz" min="-1" max="1" step="0.01" value="0">
+        <input type="range" id="zkz" min="-1.4" max="1.4" step="0.01" value="0">
       </div>
       <div class="regel">
         <label for="zkm">Masse</label><output id="zkm-wert"></output>
@@ -803,6 +803,9 @@
      Spiel: die Kugel wird an der Grenze angehalten und als ausgeschieden
      vermerkt. Das hält den Maßstab konstant und beendet lange Ausläufe. */
   var FELD_VON = 0, FELD_BIS = BASIS_X;
+  /* Quer misst das Feld 3 m. Die Begrenzung lenkt nicht ab — wer sie überschreitet,
+     ist im seitlichen Aus. */
+  var FELD_HALB = 1.5;
   var bahn = null, view = null, kies = [], halme = [];
   var merkliste = [];                  /* gemerkte Vergleichswürfe */
   var MERK_MAX = 6;
@@ -1000,9 +1003,10 @@
     }
     if (k.y > k.hMax) k.hMax = k.y;
 
-    if (k.x < FELD_VON || k.x > FELD_BIS) {
+    if (k.x < FELD_VON || k.x > FELD_BIS || k.z < -FELD_HALB || k.z > FELD_HALB) {
       k.aus = true;
       k.x = Math.max(FELD_VON, Math.min(FELD_BIS, k.x));
+      k.z = Math.max(-FELD_HALB, Math.min(FELD_HALB, k.z));
       k.y = 0;
       k.vx = k.vy = k.vz = 0;
       k.zustand = "still";
@@ -1483,22 +1487,9 @@
     var breite = obenLeinwand.clientWidth, hoehe = obenLeinwand.clientHeight;
     if (!breite || !hoehe) { sichtOben = null; return; }
 
-    var zMax = 0.45;
-    if (bahn && bahn.punkte) {
-      for (var k = 0; k < bahn.punkte.length; k += 7) {
-        var az = Math.abs(bahn.punkte[k].z);
-        if (az > zMax) zMax = az;
-      }
-    }
-    if (groessteMerk("seiteMax") > zMax) zMax = groessteMerk("seiteMax");
-    if (bahn.zielKugel) {
-      var azk = Math.max(Math.abs(bahn.zielKugel.z), Math.abs(bahn.zielKugel.startZ));
-      if (azk > zMax) zMax = azk;
-    }
-    if (bahn.cochonnet && Math.abs(bahn.cochonnet.z) > zMax) zMax = Math.abs(bahn.cochonnet.z);
-    if (Math.abs(bahn.zielSeite) > zMax) zMax = Math.abs(bahn.zielSeite);
-    if (streuung && streuung.zMax > zMax) zMax = streuung.zMax;
-    zMax = zMax * 1.25;
+    /* Der Querausschnitt ist das Spielfeld selbst: 3 m breit, mit etwas Rand,
+       damit die Begrenzungslinien sichtbar bleiben. */
+    var zMax = FELD_HALB * 1.14;
 
     var mitte = hoehe / 2 + 5;
     var halb = Math.max(10, mitte - 16);
@@ -1520,6 +1511,24 @@
     /* Grundfläche im Farbton des Bodens */
     c.fillStyle = stil().basis;
     c.fillRect(0, 0, S.breite, S.hoehe);
+
+    /* Seitliche Begrenzung des Spielfelds */
+    c.strokeStyle = "rgba(237,234,225,.5)";
+    c.lineWidth = 1.4;
+    c.setLineDash([5, 4]);
+    [-FELD_HALB, FELD_HALB].forEach(function (zz) {
+      var yy = S.sz(zz);
+      c.beginPath();
+      c.moveTo(0, yy + 0.5);
+      c.lineTo(S.breite, yy + 0.5);
+      c.stroke();
+    });
+    c.setLineDash([]);
+    c.font = "9px 'IBM Plex Mono', ui-monospace, monospace";
+    c.textAlign = "right";
+    c.textBaseline = "top";
+    c.fillStyle = "rgba(237,234,225,.5)";
+    c.fillText("Feldrand", S.breite - 6, S.sz(FELD_HALB) + 3);
 
     /* Wurfachse und Seitenraster */
     c.font = "9px 'IBM Plex Mono', ui-monospace, monospace";
