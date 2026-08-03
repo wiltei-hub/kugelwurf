@@ -584,8 +584,12 @@
         <label for="drall">Drall beim Abwurf <span class="franz">Rétro</span></label><output id="drall-wert"></output>
         <input type="range" id="drall" min="0" max="20" step="0.5" value="0">
       </div>
+      <div class="regel" id="regel-handaz">
+        <label for="handaz">Hand waagerecht gedreht</label><output id="handaz-wert"></output>
+        <input type="range" id="handaz" min="-45" max="45" step="1" value="0">
+      </div>
       <div class="regel" id="regel-verdrehung">
-        <label for="verdrehung">Verdrehung der Wurfhand</label><output id="verdrehung-wert"></output>
+        <label for="verdrehung">Verdrehung der Wurfhand <span class="franz">Effet</span></label><output id="verdrehung-wert"></output>
         <input type="range" id="verdrehung" min="-90" max="90" step="5" value="0">
       </div>
     </div>
@@ -600,6 +604,13 @@
           bewegt bei 10 U/s nur wenige Zentimeter. Er wirkt beim <em>Aufprall</em>: der Kontaktpunkt
           gleitet, und die Reibung wandelt Drall in Geschwindigkeit um. Rückwärtsdrall bremst,
           Seitendrall lenkt ab.</p>
+        <p>Drei Achsen beschreiben die Hand vollständig. Die <b>Verdrehung</b> kippt die
+          Drallachse um die Flugrichtung, von quer (reiner Rückwärtsdrall) bis senkrecht
+          (reiner Seitendrall) — das ist der Effetwurf. Die <b>waagerechte Drehung</b>
+          schwenkt sie um die Senkrechte: steht die Hand nicht rechtwinklig zur
+          Wurfrichtung, bekommt der Drall einen Längsanteil ω<sub>x</sub>, und der erzeugt
+          beim Aufsetzen einen Querschlupf — die Kugel schlägt seitlich aus. Die
+          <b>Haltung</b> bestimmt schließlich den Drehsinn.</p>
         <p><b>Handrücken oben</b> — im Boule die übliche Haltung — löst die Kugel über die
           Finger und gibt ihr Rückwärtsdrall: sie beißt sich beim Aufsetzen fest und
           verkürzt den Wurf. <b>Handfläche oben</b> dreht den Drallsinn um; die Kugel rollt
@@ -749,7 +760,7 @@
   var STANDARD_BODEN = 1;
 
   var STANDARD = { v0: 7.3, winkel: 42, y0: 1.40, z0: 0, ziel: 7.7, zielz: 0, masse: 700, durchmesser: 74,
-                   drall: 0, verdrehung: 0, anzahl: 100, streuV: 0.15, streuW: 1.0,
+                   drall: 0, verdrehung: 0, handaz: 0, anzahl: 100, streuV: 0.15, streuW: 1.0,
                    zkx: 8.5, zkz: 0, zkm: 700, zkd: 74, richtung: 0, cm: 12, cd: 30 };
 
   var el = function (id) { return document.getElementById(id); };
@@ -1136,15 +1147,20 @@
 
     var om = p.drall * 2 * Math.PI * (p.handSinn || 1);
     var gam = p.verdrehung * Math.PI / 180;
+    var azSpin = az - (p.handAz || 0) * Math.PI / 180;
 
     var rnd = saatQuelle(p.saat);
 
     var schuetze = neuerKoerper(p, {
       rolle: "schuetze", x: 0, y: p.y0, z: p.z0 || 0,
       vx: vh0 * Math.cos(az), vy: p.v0 * Math.sin(rad), vz: vh0 * Math.sin(az),
-      wx: -om * Math.cos(gam) * Math.sin(az),
+      /* Die Drallachse steht nur dann quer zur Flugrichtung, wenn die Hand
+         rechtwinklig gehalten wird. Eine waagerechte Drehung um delta setzt die
+         Achse auf (az − delta) und erzeugt einen Längsanteil ω_x, der am
+         Kontaktpunkt einen Querschlupf hervorruft. */
+      wx: -om * Math.cos(gam) * Math.sin(azSpin),
       wy: om * Math.sin(gam),
-      wz: om * Math.cos(gam) * Math.cos(az),
+      wz: om * Math.cos(gam) * Math.cos(azSpin),
       m: p.m, d: 2 * R, zustand: "flug"
     });
 
@@ -1202,12 +1218,13 @@
           if (spalt < minSpalt) minSpalt = spalt;
 
           /* Engste Annäherung an das Cochonnet mitschreiben — damit ein Fehlschuss
-             erklärbar wird: meist fliegt die Kugel schlicht darüber hinweg. */
-          if (coch && (a.rolle === "cochonnet" || b.rolle === "cochonnet") &&
-                      (a.rolle === "schuetze"  || b.rolle === "schuetze")) {
+             erklärbar wird. Maßgeblich ist der nächste Körper überhaupt, nicht nur
+             der Schütze: oft läuft die angestoßene Zielkugel viel enger vorbei. */
+          if (coch && (a.rolle === "cochonnet" || b.rolle === "cochonnet")) {
+            var andere = (a.rolle === "cochonnet") ? b : a;
             if (!cochNah || spalt < cochNah.spalt) {
-              cochNah = { spalt: spalt, hoehe: schuetze.y,
-                          laengs: schuetze.x - coch.startX };
+              cochNah = { spalt: spalt, hoehe: andere.y,
+                          laengs: andere.x - coch.startX, wer: andere.rolle };
             }
           }
           /* Ein Paar darf erst wieder stoßen, wenn es sich getrennt hat. Sonst
@@ -1260,7 +1277,8 @@
         aus: coch.aus,
         nahSpalt: cochNah ? Math.max(0, cochNah.spalt) : null,
         nahHoehe: cochNah ? cochNah.hoehe : null,
-        nahLaengs: cochNah ? cochNah.laengs : null
+        nahLaengs: cochNah ? cochNah.laengs : null,
+        nahWer: cochNah ? cochNah.wer : null
       };
     }
 
@@ -1314,6 +1332,7 @@
       streuV:      parseFloat(el("streuV").value),
       streuW:      parseFloat(el("streuW").value),
       verdrehung:  parseFloat(el("verdrehung").value),
+      handAz:      parseFloat(el("handaz").value),
       saat:        saatWurf,
       pRef:        pRef
     };
@@ -1379,6 +1398,8 @@
     var ohneDrall = p.drall < 0.05;
     el("verdrehung").disabled = ohneDrall;
     el("regel-verdrehung").classList.toggle("stumm", ohneDrall);
+    el("handaz").disabled = ohneDrall;
+    el("regel-handaz").classList.toggle("stumm", ohneDrall);
 
     el("deutung-hand").textContent = p.drall < 0.05
       ? "Ohne Drall wirkt die Handverdrehung nicht — die Achse hat nichts zu drehen."
@@ -1391,16 +1412,17 @@
        demselben Zufallskeim, nur ohne Verdrehung — die Differenz ist ihr
        reiner Beitrag. */
     var feld = el("wirkung-hand");
-    if (!bahn || ohneDrall || Math.abs(p.verdrehung) < 0.5) {
+    if (!bahn || ohneDrall || (Math.abs(p.verdrehung) < 0.5 && Math.abs(p.handAz) < 0.5)) {
       feld.textContent = "";
       return;
     }
     var q = parameter();
     q.verdrehung = 0;
+    q.handAz = 0;
     var ohne = simuliere(q, true);
     var dz = bahn.seite - ohne.seite;
     var dx = bahn.weite - ohne.weite;
-    feld.textContent = "An diesem Wurf: " +
+    feld.textContent = "Handdrehung und Verdrehung zusammen: " +
       (dz >= 0 ? "+" : "−") + Math.abs(dz * 100).toFixed(0) + " cm zur Seite, " +
       (dx >= 0 ? "+" : "−") + Math.abs(dx * 100).toFixed(0) + " cm in der Länge — " +
       "gegenüber demselben Wurf ohne Verdrehung.";
@@ -1432,6 +1454,7 @@
     el("streuV-wert").textContent      = "± " + p.streuV.toFixed(2) + " m/s";
     el("streuW-wert").textContent      = "± " + p.streuW.toFixed(1) + "°";
     el("verdrehung-wert").textContent  = (p.verdrehung > 0 ? "+" : "") + p.verdrehung.toFixed(0) + "°";
+    el("handaz-wert").textContent      = (p.handAz > 0 ? "+" : "") + p.handAz.toFixed(0) + "°";
 
     el("kopfzeile").textContent =
       Math.round(p.m * 1000) + " g · " + p.durchmesser.toFixed(1) + " mm · " +
@@ -2313,13 +2336,16 @@
           (co.aus ? "aus dem Feld" : "jetzt bei " + co.x.toFixed(2) + " m") + "</span>";
       } else if (co.nahSpalt === null) {
         el("m-co").innerHTML = "– <span>nicht erreicht</span>";
-      } else if (co.nahHoehe > 0.005 && Math.abs(co.nahLaengs) < 0.25) {
-        /* Die Kugel war längs auf Höhe des Cochonnets, aber zu hoch. */
-        el("m-co").innerHTML = "– <span>überflogen in " +
-          (co.nahHoehe * 100).toFixed(0) + " cm Höhe</span>";
       } else {
-        el("m-co").innerHTML = "– <span>vorbei um " +
-          (co.nahSpalt * 100).toFixed(0) + " cm</span>";
+        var wer = co.nahWer === "ziel" ? "Zielkugel" : "Boule";
+        if (co.nahHoehe > 0.005 && Math.abs(co.nahLaengs) < 0.25) {
+          /* Der Körper war längs auf Höhe des Cochonnets, aber zu hoch. */
+          el("m-co").innerHTML = "– <span>" + wer + " überflog es in " +
+            (co.nahHoehe * 100).toFixed(0) + " cm Höhe</span>";
+        } else {
+          el("m-co").innerHTML = "– <span>" + wer + " vorbei um " +
+            (co.nahSpalt * 100).toFixed(0) + " cm</span>";
+        }
       }
     }
     if (!zielkugelAn || !bahn.zielKugel) return;
@@ -2599,7 +2625,7 @@
   /* ---------- 7. Verdrahtung ---------- */
 
   ["v0", "winkel", "y0", "z0", "ziel", "zielz", "masse", "durchmesser", "drall", "verdrehung",
-   "anzahl", "streuV", "streuW", "zkx", "zkz", "zkm", "zkd", "richtung",
+   "anzahl", "streuV", "streuW", "zkx", "zkz", "zkm", "zkd", "richtung", "handaz",
    "cm", "cd"].forEach(function (id) {
     el(id).addEventListener("input", function () {
       anhalten(); beschrifteRegler(); neuRechnen(true);
