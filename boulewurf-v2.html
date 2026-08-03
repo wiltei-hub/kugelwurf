@@ -237,7 +237,11 @@
   #erklaerung, #erklaerung-hand, #erklaerung-serie, #erklaerung-schuss { display: none; margin: 4px 0 8px; }
   #erklaerung.offen, #erklaerung-hand.offen, #erklaerung-serie.offen,
   #erklaerung-schuss.offen { display: block; }
-  #schussschalter { margin: 4px 0 2px; }
+  #schussschalter, #schussschalter2 { margin: 4px 0 2px; }
+  .gruppenhinweis {
+    margin: 5px 0 0; font-size: max(9.5px, calc(11px * var(--fs)));
+    line-height: 1.45; color: #6E7A6E;
+  }
   #erklaerung .karte, #erklaerung-hand .karte, #erklaerung-serie .karte, #erklaerung-schuss .karte {
     border-left: 2px solid var(--ochre);
     padding: 0 0 0 11px; margin: 0 0 9px;
@@ -420,12 +424,8 @@
         <input type="range" id="y0" min="0.3" max="1.8" step="0.05" value="1.40">
       </div>
       <div class="regel">
-        <label for="ziel">Cochonnet Entfernung</label><output id="ziel-wert"></output>
-        <input type="range" id="ziel" min="4" max="12" step="0.1" value="7.7">
-      </div>
-      <div class="regel">
-        <label for="zielz">Cochonnet seitlich</label><output id="zielz-wert"></output>
-        <input type="range" id="zielz" min="-1.5" max="1.5" step="0.01" value="0">
+        <label for="richtung">Zielrichtung <span class="franz">Azimut</span></label><output id="richtung-wert"></output>
+        <input type="range" id="richtung" min="-10" max="10" step="0.1" value="0">
       </div>
     </div>
   </section>
@@ -445,52 +445,66 @@
   </section>
 
   <section class="gruppe">
-    <h2>Schuss <button type="button" class="hilfe" id="hilfe-schuss" aria-expanded="false" aria-controls="erklaerung-schuss">Wie wird gerechnet?</button></h2>
+    <h2>Cochonnet</h2>
     <div id="schussschalter">
-      <button type="button" class="boden" id="zielkugel" aria-pressed="true">Zielkugel im Spiel</button>
       <button type="button" class="boden" id="cochonnetkoerper" aria-pressed="true">Cochonnet beweglich</button>
     </div>
     <div class="regler">
       <div class="regel">
-        <label for="zkx">Zielkugel Entfernung</label><output id="zkx-wert"></output>
-        <input type="range" id="zkx" min="3" max="13" step="0.05" value="8.5">
+        <label for="ziel">Entfernung</label><output id="ziel-wert"></output>
+        <input type="range" id="ziel" min="4" max="12" step="0.1" value="7.7">
       </div>
       <div class="regel">
-        <label for="zkz">Zielkugel seitlich</label><output id="zkz-wert"></output>
-        <input type="range" id="zkz" min="-1" max="1" step="0.01" value="0">
+        <label for="zielz">Seitliche Lage</label><output id="zielz-wert"></output>
+        <input type="range" id="zielz" min="-1.5" max="1.5" step="0.01" value="0">
       </div>
       <div class="regel">
-        <label for="richtung">Zielrichtung <span class="franz">Azimut</span></label><output id="richtung-wert"></output>
-        <input type="range" id="richtung" min="-10" max="10" step="0.1" value="0">
-      </div>
-      <div class="regel">
-        <label for="zkm">Masse der Zielkugel</label><output id="zkm-wert"></output>
-        <input type="range" id="zkm" min="600" max="850" step="5" value="700">
-      </div>
-      <div class="regel">
-        <label for="zkd">Durchmesser der Zielkugel</label><output id="zkd-wert"></output>
-        <input type="range" id="zkd" min="70" max="80" step="0.5" value="74">
-      </div>
-      <div class="regel">
-        <label for="cm">Masse des Cochonnets</label><output id="cm-wert"></output>
+        <label for="cm">Masse</label><output id="cm-wert"></output>
         <input type="range" id="cm" min="10" max="18" step="0.5" value="12">
       </div>
       <div class="regel">
-        <label for="cd">Durchmesser des Cochonnets</label><output id="cd-wert"></output>
+        <label for="cd">Durchmesser</label><output id="cd-wert"></output>
         <input type="range" id="cd" min="29" max="31" step="0.5" value="30">
+      </div>
+    </div>
+    <p class="gruppenhinweis">Ohne den Schalter bleibt das Cochonnet ein reines Ziel und wird
+      nicht angestoßen. Beide Lagen lassen sich auch direkt im Bild verschieben.</p>
+  </section>
+
+  <section class="gruppe">
+    <h2>Zielkugel <button type="button" class="hilfe" id="hilfe-schuss" aria-expanded="false" aria-controls="erklaerung-schuss">Wie wird der Stoß gerechnet?</button></h2>
+    <div id="schussschalter2">
+      <button type="button" class="boden" id="zielkugel" aria-pressed="true">Zielkugel im Spiel</button>
+    </div>
+    <div class="regler">
+      <div class="regel">
+        <label for="zkx">Entfernung</label><output id="zkx-wert"></output>
+        <input type="range" id="zkx" min="3" max="13" step="0.05" value="8.5">
+      </div>
+      <div class="regel">
+        <label for="zkz">Seitliche Lage</label><output id="zkz-wert"></output>
+        <input type="range" id="zkz" min="-1" max="1" step="0.01" value="0">
+      </div>
+      <div class="regel">
+        <label for="zkm">Masse</label><output id="zkm-wert"></output>
+        <input type="range" id="zkm" min="600" max="850" step="5" value="700">
+      </div>
+      <div class="regel">
+        <label for="zkd">Durchmesser</label><output id="zkd-wert"></output>
+        <input type="range" id="zkd" min="70" max="80" step="0.5" value="74">
       </div>
     </div>
     <div id="erklaerung-schuss">
       <div class="karte">
-        <h3>Der Stoß auf die Kugel</h3>
+        <h3>Der Stoß auf eine Kugel</h3>
         <p>Beim Berühren wirkt ein Impuls entlang der Mittelpunktsverbindung:
           J = (1+e)·u<sub>n</sub>/(1/m₁+1/m₂), mit e = 0,75 für Stahl auf Stahl. Weil der
           Zeitschritt 2 ms beträgt und die Kugel darin 2 cm zurücklegt, wird der
           Berührzeitpunkt innerhalb des Schritts zurückgerechnet — sonst stimmte die
           Stoßnormale nicht.</p>
-        <p>Über Treffen oder Vorbei entscheiden Millimeter: bei 74-mm-Kugeln genügen
-          7,4 cm seitlicher Fehler. Ein einzelner Schuss sagt darum wenig — erst die Serie
-          liefert eine Trefferquote.</p>
+        <p>Über Treffen oder Vorbei entscheiden Zentimeter: bei zwei 74-mm-Kugeln genügen
+          7,4 cm seitlicher Fehler, beim 30-mm-Cochonnet schon 5,2 cm. Ein einzelner Schuss
+          sagt darum wenig — erst die Serie liefert eine Trefferquote.</p>
         <p>Der <em>Carreau</em> — die Zielkugel fliegt weg, der Schütze bleibt an ihrem
           Platz — entsteht bei zentralem Treffer aus dem Tangentialanteil des Stoßes und
           gilt hier als erreicht, wenn die Zielkugel über 0,5 m wandert und der Schütze
