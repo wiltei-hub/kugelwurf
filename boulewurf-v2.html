@@ -450,6 +450,10 @@
         <label for="richtung">Zielrichtung <span class="franz">Azimut</span></label><output id="richtung-wert"></output>
         <input type="range" id="richtung" min="-10" max="10" step="0.1" value="0">
       </div>
+      <div class="regel">
+        <label for="z0">Hand seitlich <span class="franz">im Kreis</span></label><output id="z0-wert"></output>
+        <input type="range" id="z0" min="-0.25" max="0.25" step="0.01" value="0">
+      </div>
     </div>
   </section>
 
@@ -744,7 +748,7 @@
   ];
   var STANDARD_BODEN = 1;
 
-  var STANDARD = { v0: 7.3, winkel: 42, y0: 1.40, ziel: 7.7, zielz: 0, masse: 700, durchmesser: 74,
+  var STANDARD = { v0: 7.3, winkel: 42, y0: 1.40, z0: 0, ziel: 7.7, zielz: 0, masse: 700, durchmesser: 74,
                    drall: 0, verdrehung: 0, anzahl: 100, streuV: 0.15, streuW: 1.0,
                    zkx: 8.5, zkz: 0, zkm: 700, zkd: 74, richtung: 0, cm: 12, cd: 30 };
 
@@ -1136,7 +1140,7 @@
     var rnd = saatQuelle(p.saat);
 
     var schuetze = neuerKoerper(p, {
-      rolle: "schuetze", x: 0, y: p.y0, z: 0,
+      rolle: "schuetze", x: 0, y: p.y0, z: p.z0 || 0,
       vx: vh0 * Math.cos(az), vy: p.v0 * Math.sin(rad), vz: vh0 * Math.sin(az),
       wx: -om * Math.cos(gam) * Math.sin(az),
       wy: om * Math.sin(gam),
@@ -1286,6 +1290,7 @@
       v0:          parseFloat(el("v0").value),
       winkel:      parseFloat(el("winkel").value),
       y0:          parseFloat(el("y0").value),
+      z0:          parseFloat(el("z0").value),
       ziel:        parseFloat(el("ziel").value),
       zielZ:       parseFloat(el("zielz").value),
       m:           parseFloat(el("masse").value) / 1000,
@@ -1406,6 +1411,7 @@
     el("v0-wert").textContent          = p.v0.toFixed(1) + " m/s";
     el("winkel-wert").textContent      = p.winkel.toFixed(0) + "°";
     el("y0-wert").textContent          = p.y0.toFixed(2) + " m";
+    el("z0-wert").textContent          = (p.z0 >= 0 ? "+" : "−") + Math.abs(p.z0).toFixed(2) + " m";
     el("ziel-wert").textContent        = p.ziel.toFixed(1) + " m";
     el("zielz-wert").textContent       = (p.zielZ >= 0 ? "+" : "−") + Math.abs(p.zielZ).toFixed(2) + " m";
     el("masse-wert").textContent       = Math.round(p.m * 1000) + " g";
@@ -1701,11 +1707,27 @@
     c.arc(S.sx(ccx), S.sz(ccz), 4, 0, 6.2832);
     c.fill();
 
-    /* Abwurfkreis */
+    /* Wurfkreis (50 cm Durchmesser) maßstäblich — längs und quer haben
+       verschiedene Maßstäbe, deshalb als Ellipse. Der Abwurfpunkt darf innerhalb
+       des Kreises von der Mittellinie abweichen und wird als Kreuz markiert. */
+    var krx = Math.max(4, 0.25 * view.skala);
+    var kry = Math.max(4, 0.25 * S.skalaZ);
     c.strokeStyle = FARBE_ABWURF;
-    c.lineWidth = 2;
+    c.lineWidth = 1.6;
+    c.save();
+    c.translate(S.sx(0), S.sz(0));
+    c.scale(1, kry / krx);
     c.beginPath();
-    c.arc(S.sx(0), S.sz(0), Math.max(5, 0.25 * view.skala * 0.5), 0, 6.2832);
+    c.arc(0, 0, krx, 0, 6.2832);
+    c.restore();
+    c.stroke();
+
+    var az0 = bahn.punkte[0].z;
+    var hx = S.sx(0), hy = S.sz(az0);
+    c.lineWidth = 1.8;
+    c.beginPath();
+    c.moveTo(hx - 4, hy); c.lineTo(hx + 4, hy);
+    c.moveTo(hx, hy - 4); c.lineTo(hx, hy + 4);
     c.stroke();
 
     /* Bahn bis zum aktuellen Punkt */
@@ -2576,7 +2598,7 @@
 
   /* ---------- 7. Verdrahtung ---------- */
 
-  ["v0", "winkel", "y0", "ziel", "zielz", "masse", "durchmesser", "drall", "verdrehung",
+  ["v0", "winkel", "y0", "z0", "ziel", "zielz", "masse", "durchmesser", "drall", "verdrehung",
    "anzahl", "streuV", "streuW", "zkx", "zkz", "zkm", "zkd", "richtung",
    "cm", "cd"].forEach(function (id) {
     el(id).addEventListener("input", function () {
