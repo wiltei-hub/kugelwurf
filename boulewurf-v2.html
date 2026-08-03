@@ -684,6 +684,21 @@
   var M_REF = 0.700, R_REF = 0.037;    /* Kalibrierpunkt: 700 g, 74 mm */
   var R_ZIEL = 0.015;
 
+  /* --- Farben der Spielobjekte -------------------------------------------------
+     Hier lassen sich die Farben zentral ändern; alle Zeichenstellen beziehen sich
+     darauf. FARBE_COCH gilt für das Cochonnet in beiden Ansichten, samt Spur und
+     Ausgangsring. Für die plastische Kugel in der Seitenansicht dienen die drei
+     Stufen von hell nach dunkel als Verlauf. */
+  var FARBE_COCH      = "#D0902B";
+  var FARBE_COCH_HELL = "#F2D8B4";
+  var FARBE_COCH_TIEF = "#8A5C1C";
+
+  function mitAlpha(hex, a) {
+    return "rgba(" + parseInt(hex.substr(1, 2), 16) + "," +
+                     parseInt(hex.substr(3, 2), 16) + "," +
+                     parseInt(hex.substr(5, 2), 16) + "," + a + ")";
+  }
+
   var BOEDEN = [
     { name: "Grober Schotter", korngroesse: 10, e: 0.14, mu: 0.20, p: 220,
       stil: { basis: "#37342D", korn: ["#8E8579", "#6A6358", "#A79C8C"], form: "kantig",
@@ -1582,12 +1597,12 @@
       var ci = Math.max(0, Math.min(co2.spur.length - 1, i));
       ccx = co2.spur[ci].x; ccz = co2.spur[ci].z;
       if (co2.getroffen) {
-        c.strokeStyle = "rgba(208,144,43,.45)";
+        c.strokeStyle = mitAlpha(FARBE_COCH, 0.45);
         c.lineWidth = 1;
         c.beginPath();
         c.arc(S.sx(co2.startX), S.sz(co2.startZ), 3.5, 0, 6.2832);
         c.stroke();
-        c.strokeStyle = "rgba(208,144,43,.85)";
+        c.strokeStyle = mitAlpha(FARBE_COCH, 0.85);
         c.lineWidth = 1.4;
         c.beginPath();
         var lo = false;
@@ -1599,7 +1614,7 @@
         if (lo) c.stroke();
       }
     }
-    c.fillStyle = "#D0902B";
+    c.fillStyle = FARBE_COCH;
     c.beginPath();
     c.arc(S.sx(ccx), S.sz(ccz), 4, 0, 6.2832);
     c.fill();
@@ -2023,7 +2038,7 @@
   function zeichneCochonnetSpur(i) {
     if (!bahn.cochonnet || !bahn.cochonnet.getroffen) return;
     var co = bahn.cochonnet;
-    ctx.strokeStyle = "rgba(208,144,43,.8)";
+    ctx.strokeStyle = mitAlpha(FARBE_COCH, 0.8);
     ctx.lineWidth = 1.6;
     ctx.beginPath();
     var los = false, bis = Math.min(i, co.spur.length - 1);
@@ -2044,7 +2059,7 @@
       cx = co.spur[idx].x; cz = co.spur[idx].z; rC = co.R;
       if (co.getroffen) {                       /* Ausgangslage als Ring */
         var r0 = Math.max(4, rC * view.skala);
-        ctx.strokeStyle = "rgba(208,144,43,.4)";
+        ctx.strokeStyle = mitAlpha(FARBE_COCH, 0.4);
         ctx.lineWidth = 1.1;
         ctx.beginPath();
         ctx.arc(view.sx(co.startX), view.boden - r0, r0, 0, 6.2832);
@@ -2056,10 +2071,19 @@
     ctx.fillStyle = "rgba(0,0,0,.35)";
     ellipseBogen(x, view.boden + 1, r * 1.6, r * 0.5);
     ctx.fill();
-    ctx.fillStyle = "#D0902B";
+
+    var y = view.boden - r;
+    var g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+    g.addColorStop(0, FARBE_COCH_HELL);
+    g.addColorStop(0.45, FARBE_COCH);
+    g.addColorStop(1, FARBE_COCH_TIEF);
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(x, view.boden - r, r, 0, 6.2832);
+    ctx.arc(x, y, r, 0, 6.2832);
     ctx.fill();
+    ctx.strokeStyle = mitAlpha(FARBE_COCH_HELL, 0.75);
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
   /* Die Bahn wird einmal auf höchstens 320 Stützpunkte ausgedünnt. Feiner löst kein
