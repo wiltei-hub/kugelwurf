@@ -476,7 +476,7 @@
       </div>
       <div class="regel">
         <label for="zielz">Seitliche Lage</label><output id="zielz-wert"></output>
-        <input type="range" id="zielz" min="-1.4" max="1.4" step="0.01" value="0">
+        <input type="range" id="zielz" min="-2" max="2" step="0.01" value="0">
       </div>
       <div class="regel">
         <label for="cm">Masse</label><output id="cm-wert"></output>
@@ -503,7 +503,7 @@
       </div>
       <div class="regel">
         <label for="zkz">Seitliche Lage</label><output id="zkz-wert"></output>
-        <input type="range" id="zkz" min="-1.4" max="1.4" step="0.01" value="0">
+        <input type="range" id="zkz" min="-2" max="2" step="0.01" value="0">
       </div>
       <div class="regel">
         <label for="zkm">Masse</label><output id="zkm-wert"></output>
@@ -803,9 +803,9 @@
      Spiel: die Kugel wird an der Grenze angehalten und als ausgeschieden
      vermerkt. Das hält den Maßstab konstant und beendet lange Ausläufe. */
   var FELD_VON = 0, FELD_BIS = BASIS_X;
-  /* Quer misst das Feld 3 m. Die Begrenzung lenkt nicht ab — wer sie überschreitet,
-     ist im seitlichen Aus. */
-  var FELD_HALB = 1.5;
+  /* Das Spielfeld misst 15 m mal 4 m. Die seitliche Begrenzung lenkt nicht ab —
+     wer sie überschreitet, ist im Aus. */
+  var FELD_HALB = 2.0;
   var bahn = null, view = null, kies = [], halme = [];
   var merkliste = [];                  /* gemerkte Vergleichswürfe */
   var MERK_MAX = 6;
@@ -1487,7 +1487,7 @@
     var breite = obenLeinwand.clientWidth, hoehe = obenLeinwand.clientHeight;
     if (!breite || !hoehe) { sichtOben = null; return; }
 
-    /* Der Querausschnitt ist das Spielfeld selbst: 3 m breit, mit etwas Rand,
+    /* Der Querausschnitt ist das Spielfeld selbst: 4 m breit, mit etwas Rand,
        damit die Begrenzungslinien sichtbar bleiben. */
     var zMax = FELD_HALB * 1.14;
 
@@ -2452,13 +2452,16 @@
       }
 
       var i = Math.floor((jetzt - startzeit) / 1000 * tempo / DT);
+      var fertig = false;
       if (i >= bahn.punkte.length - 1) {
         i = bahn.punkte.length - 1;
         laeuft = false;
         el("werfen").textContent = "Nochmal";
+        fertig = true;
       }
       frameIndex = i;
       zeichne(i);
+      if (fertig && demoWurf) { demoWurf = false; zufallslage(); }
     } catch (e) {
       meldeFehler(e, "Animation");
       laeuft = false;
@@ -2486,6 +2489,37 @@
     meldeFehler("Die Animation kam ins Stocken und wurde beendet. Der Wurf ist " +
                 "vollständig berechnet und wird als Ganzes gezeigt.", "Wachhund");
   }, 1000);
+
+  /* Nach dem einleitenden Demowurf bekommen Cochonnet und Zielkugel eine
+     zufällige Lage. Maßgeblich ist der Abstand zum Abwurfkreis: 6 bis 10 m,
+     wie es das Reglement für das Cochonnet vorschreibt. Gemessen wird radial,
+     nicht längs — deshalb x = √(d² − z²). */
+  var demoWurf = false;
+
+  function zufallslage() {
+    var grenzeZ = FELD_HALB;
+
+    function lage() {
+      /* Die Regler rasten auf 0,1 bzw. 0,05 m ein; der Abstand verschiebt sich
+         dadurch um bis zu 5 cm. Der Ziehungsbereich ist deshalb leicht
+         eingerückt, damit nach dem Runden wirklich 6 bis 10 m herauskommen. */
+      var d = 6.07 + Math.random() * 3.86;
+      var z = (Math.random() * 2 - 1) * Math.min(grenzeZ, d - 0.5);
+      var x = Math.sqrt(Math.max(0.25, d * d - z * z));
+      return { x: Math.min(FELD_BIS - 0.3, x), z: z };
+    }
+
+    var a = lage(), b = lage(), versuch = 0;
+    while (versuch < 40 &&
+           Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)) < 0.4) {
+      b = lage(); versuch++;
+    }
+
+    setzeRegler("ziel", a.x);  setzeRegler("zielz", a.z);
+    setzeRegler("zkx",  b.x);  setzeRegler("zkz",  b.z);
+    beschrifteRegler();
+    neuRechnen(true);
+  }
 
   function werfen() {
     saatWurf = (saatWurf * 1103515245 + 12345) % 2147483648;
@@ -2910,6 +2944,6 @@
   frameIndex = bahn.punkte.length - 1;
   zeichne(frameIndex);
   requestAnimationFrame(function () { requestAnimationFrame(passeGroesseAn); });
-  if (!sanft) setTimeout(function () { passeGroesseAn(); werfen(); }, 450);
+  if (!sanft) setTimeout(function () { passeGroesseAn(); demoWurf = true; werfen(); }, 450);
 })();
 </script>
