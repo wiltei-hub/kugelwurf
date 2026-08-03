@@ -689,9 +689,14 @@
      darauf. FARBE_COCH gilt für das Cochonnet in beiden Ansichten, samt Spur und
      Ausgangsring. Für die plastische Kugel in der Seitenansicht dienen die drei
      Stufen von hell nach dunkel als Verlauf. */
-  var FARBE_COCH      = "#D0902B";
-  var FARBE_COCH_HELL = "#F2D8B4";
-  var FARBE_COCH_TIEF = "#8A5C1C";
+  var FARBE_ABWURF    = "#D6412B";        /* Wurfkreis am Nullpunkt */
+  var FARBE_COCH      = FARBE_ABWURF;     /* Cochonnet, gleiche Farbe */
+  var FARBE_COCH_HELL = "#F4A99C";
+  var FARBE_COCH_TIEF = "#7C1E13";
+
+  /* Mindestradius, in dem Kugeln gezeichnet werden. Boule und Zielkugel teilen
+     ihn sich, damit gleich große Kugeln auch gleich groß aussehen. */
+  var R_MIN_PX = 7;
 
   function mitAlpha(hex, a) {
     return "rgba(" + parseInt(hex.substr(1, 2), 16) + "," +
@@ -1620,7 +1625,7 @@
     c.fill();
 
     /* Abwurfkreis */
-    c.strokeStyle = "#D6412B";
+    c.strokeStyle = FARBE_ABWURF;
     c.lineWidth = 2;
     c.beginPath();
     c.arc(S.sx(0), S.sz(0), Math.max(5, 0.25 * view.skala * 0.5), 0, 6.2832);
@@ -1921,12 +1926,12 @@
     var rx = Math.max(9, 0.25 * view.skala);      /* Wurfkreis, 50 cm Durchmesser */
     var ry = Math.max(3, rx * 0.3);
 
-    ctx.strokeStyle = "rgba(214,65,43,.35)";
+    ctx.strokeStyle = mitAlpha(FARBE_ABWURF, 0.35);
     ctx.lineWidth = 5;
     ellipseBogen(x, view.boden + 2, rx, ry);
     ctx.stroke();
 
-    ctx.strokeStyle = "#D6412B";
+    ctx.strokeStyle = FARBE_ABWURF;
     ctx.lineWidth = 2.2;
     ellipseBogen(x, view.boden + 2, rx, ry);
     ctx.stroke();
@@ -1990,7 +1995,7 @@
     var zk = bahn.zielKugel;
     var idx = Math.max(0, Math.min(zk.spur.length - 1, i));
     var q = zk.spur[idx];
-    var r = Math.max(6, zk.R * view.skala);
+    var r = Math.max(R_MIN_PX, zk.R * view.skala);
     var x = view.sx(q.x);
     var y = view.sy(q.y) - (q.y === 0 ? r : 0);
 
@@ -2118,7 +2123,7 @@
 
   function zeichneKugel(i) {
     var p = bahn.punkte[i];
-    var r = Math.max(7, bahn.R * view.skala);   /* nie kleiner als gut sichtbar */
+    var r = Math.max(R_MIN_PX, bahn.R * view.skala);
     var x = view.sx(p.x);
     var y = view.sy(p.y) - (p.y === 0 ? r : 0);
 
