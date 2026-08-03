@@ -799,6 +799,10 @@
   var cochonnetAn = true;
 
   var BASIS_X = 15.0;                  /* fester Maßstab: 15 m Piste über die Fensterbreite */
+  /* Das Spielfeld reicht von 0 bis 15 m. Was darüber hinausläuft, ist aus dem
+     Spiel: die Kugel wird an der Grenze angehalten und als ausgeschieden
+     vermerkt. Das hält den Maßstab konstant und beendet lange Ausläufe. */
+  var FELD_VON = 0, FELD_BIS = BASIS_X;
   var bahn = null, view = null, kies = [], halme = [];
   var merkliste = [];                  /* gemerkte Vergleichswürfe */
   var MERK_MAX = 6;
@@ -858,7 +862,7 @@
       wx: o.wx, wy: o.wy, wz: o.wz,
       bx: 0, bz: 0,                        /* Schattendrall, siehe Bodenkontakt */
       m: o.m, R: R, A: Math.PI * R * R,
-      zustand: o.zustand, dreh: 0, hMax: o.y,
+      zustand: o.zustand, dreh: 0, hMax: o.y, aus: false,
       startX: o.x, startZ: o.z,
       aufpralle: [], tiefen: [], spur: null
     };
@@ -995,6 +999,14 @@
       k.y = 0;
     }
     if (k.y > k.hMax) k.hMax = k.y;
+
+    if (k.x < FELD_VON || k.x > FELD_BIS) {
+      k.aus = true;
+      k.x = Math.max(FELD_VON, Math.min(FELD_BIS, k.x));
+      k.y = 0;
+      k.vx = k.vy = k.vz = 0;
+      k.zustand = "still";
+    }
   }
 
   /* --- Stoß zweier Kugeln ---------------------------------------------------
@@ -1144,7 +1156,7 @@
       }
     }
 
-    var t = 0, i, j, stoss = null, minSpalt = 1e9, cochNah = null;
+    var t = 0, i, j, stoss = null, minSpalt = 1e9, cochNah = null, imKontakt = {};
 
     while (t < MAX_T) {
       var lebt = false;
@@ -1160,6 +1172,7 @@
         for (j = i + 1; j < koerper.length; j++) {
           var a = koerper[i], b = koerper[j];
           if (a.zustand === "still" && b.zustand === "still") continue;
+          var paar = i * 8 + j;
           var spalt = abstandKugeln(a, b, false) - (a.R + b.R);
           if (spalt < minSpalt) minSpalt = spalt;
 
@@ -1172,7 +1185,13 @@
                           laengs: schuetze.x - coch.startX };
             }
           }
-          if (spalt <= 0) {
+          /* Ein Paar darf erst wieder stoßen, wenn es sich getrennt hat. Sonst
+             trifft eine absinkende Boule die eben angestoßene Kugel im nächsten
+             Schritt erneut — sie liegt ja weiter am Boden — und schiebt sie ein
+             zweites Mal an. Das ist ein Artefakt der Zeitschrittrechnung. */
+          if (spalt > 0.0005) { imKontakt[paar] = false; }
+          else if (!imKontakt[paar]) {
+            imKontakt[paar] = true;
             var tr = stossKugeln(a, b, p, rnd);
             if (tr && !stoss) { stoss = tr; stoss.t = t; }
           }
@@ -1201,6 +1220,7 @@
       donnee: donnee, rollweg: s.x - donnee,
       krater: s.tiefen.length ? s.tiefen[0] : 0,
       ziel: p.ziel, zielSeite: p.zielZ, zielX: zx, zielZ: zz, R: R, sinMax: s.sinMax,
+      aus: s.aus,
       koerper: koerper, treffer: !!stoss, stoss: stoss,
       fehlabstand: stoss ? 0 : Math.max(0, minSpalt)
     };
@@ -1212,6 +1232,7 @@
         x: coch.x, z: coch.z, hMax: coch.hMax,
         verschiebung: Math.sqrt(cvx * cvx + cvz * cvz),
         getroffen: Math.sqrt(cvx * cvx + cvz * cvz) > 0.01,
+        aus: coch.aus,
         nahSpalt: cochNah ? Math.max(0, cochNah.spalt) : null,
         nahHoehe: cochNah ? cochNah.hoehe : null,
         nahLaengs: cochNah ? cochNah.laengs : null
@@ -1221,7 +1242,7 @@
     if (ziel) {
       var vx = ziel.x - ziel.startX, vz = ziel.z - ziel.startZ;
       erg.zielKugel = {
-        spur: ziel.spur, R: ziel.R,
+        spur: ziel.spur, R: ziel.R, aus: ziel.aus,
         startX: ziel.startX, startZ: ziel.startZ,
         x: ziel.x, z: ziel.z, hMax: ziel.hMax,
         verschiebung: Math.sqrt(vx * vx + vz * vz)
@@ -1417,12 +1438,11 @@
 
     /* Die Längsachse ist fest: 15 m füllen die Piste, unabhängig von allem anderen.
        Nur wenn ein Wurf tatsächlich weiter reicht, wird der Ausschnitt geweitet. */
-    var weiteste = Math.max(bahn.weite, bahn.ziel, groessteMerk("weite"),
-                            bahn.zielKugel ? Math.max(bahn.zielKugel.x, bahn.zielKugel.startX) : 0,
-                            bahn.cochonnet ? bahn.cochonnet.x : 0) + 0.4;
-    var xSpanne = Math.max(BASIS_X, weiteste);
+    /* Der Ausschnitt ist genau das Spielfeld: 0 bis 15 m, unveränderlich.
+       Alles außerhalb ist ausgeschieden und wird an der Grenze festgehalten. */
+    var kleinste = FELD_VON;
+    var xSpanne = FELD_BIS - FELD_VON;
     var skala = Math.max(2, nutzbreite / xSpanne);
-    xSpanne = nutzbreite / skala;
 
     /* Reicht die Fensterhöhe für den Bogen nicht, wird ausschließlich die Höhe
        gestaucht. Die Längsskala bleibt dadurch in jedem Fenster dieselbe. */
@@ -1433,17 +1453,22 @@
     if (nutzhoehe / skala < bedarfY) skalaY = Math.max(1, nutzhoehe / bedarfY);
     var ySpanne = nutzhoehe / skalaY;
 
+    var draussen = (bahn.aus ? 1 : 0) +
+                   (bahn.zielKugel && bahn.zielKugel.aus ? 1 : 0) +
+                   (bahn.cochonnet && bahn.cochonnet.aus ? 1 : 0);
     var stauchung = skala / skalaY;
     var hinweis = el("hinweis-hoehe");
-    hinweis.hidden = stauchung < 1.03;
-    if (!hinweis.hidden) {
-      hinweis.textContent = "Höhe 1:" + stauchung.toFixed(1).replace(".", ",") + " gestaucht";
-    }
+    var texte = [];
+    if (stauchung >= 1.03) texte.push("Höhe 1:" + stauchung.toFixed(1).replace(".", ",") + " gestaucht");
+    if (draussen) texte.push(draussen === 1 ? "1 Kugel aus dem Feld" : draussen + " Kugeln aus dem Feld");
+    hinweis.hidden = !texte.length;
+    if (texte.length) hinweis.textContent = texte.join("  ·  ");
 
     view = {
       skala: skala, skalaY: skalaY, links: links, boden: hoehe - unten,
       breite: breite, hoehe: hoehe, xSpanne: xSpanne, ySpanne: ySpanne,
-      sx: function (x) { return links + x * skala; },
+      xMin: kleinste,
+      sx: function (x) { return links + (x - kleinste) * skala; },
       sy: function (y) { return (hoehe - unten) - y * skalaY; }
     };
     streueKies();
@@ -1773,6 +1798,7 @@
     ctx.clearRect(0, 0, view.breite, view.hoehe);
     zeichneBoden();
     zeichneMassband();
+    zeichneFeldgrenze();
     zeichneAbwurfring();
     zeichneVergleich();
     ctx = ctxHaupt;
@@ -1827,7 +1853,7 @@
     if (s.streifen === "fuge") {                       /* Dehnungsfugen alle 2 m */
       ctx.strokeStyle = s.streifenFarbe;
       ctx.lineWidth = 1.5;
-      for (var m = 0; m < 400; m += 2) {
+      for (var m = Math.floor(view.xMin / 2) * 2; m < 400; m += 2) {
         x = view.sx(m);
         if (x > view.breite) break;
         ctx.beginPath();
@@ -1883,7 +1909,7 @@
 
   function zeichneMassband() {
     var schritt = view.skala < 26 ? 2 : 1;
-    var xMax = view.xSpanne;
+    var xMax = view.xMin + view.xSpanne;
     var bandOben = view.boden + 1;
     var bandHoehe = 26;
     var x, m, gross;
@@ -1903,7 +1929,7 @@
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    for (m = 0; m <= xMax + 0.001; m += schritt) {
+    for (m = Math.ceil(view.xMin / schritt) * schritt; m <= xMax + 0.001; m += schritt) {
       x = view.sx(m);
       if (x > view.breite - 2) break;
       gross = (m % (schritt * 5) === 0);
@@ -1919,6 +1945,20 @@
       }
     }
     ctx.textBaseline = "top";
+  }
+
+  function zeichneFeldgrenze() {
+    /* Rechter Rand des Spielfelds: dort werden Kugeln angehalten. */
+    var x = view.sx(FELD_BIS);
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = "rgba(237,234,225,.3)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - 0.5, view.boden - view.ySpanne * view.skalaY);
+    ctx.lineTo(x - 0.5, view.boden);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function zeichneAbwurfring() {
@@ -2195,8 +2235,8 @@
     if (cochonnetAn && bahn.cochonnet) {
       var co = bahn.cochonnet;
       if (co.getroffen) {
-        el("m-co").innerHTML = co.verschiebung.toFixed(2) +
-          " <span>m → jetzt bei " + co.x.toFixed(2) + " m</span>";
+        el("m-co").innerHTML = co.verschiebung.toFixed(2) + " <span>m → " +
+          (co.aus ? "aus dem Feld" : "jetzt bei " + co.x.toFixed(2) + " m") + "</span>";
       } else if (co.nahSpalt === null) {
         el("m-co").innerHTML = "– <span>nicht erreicht</span>";
       } else if (co.nahHoehe > 0.005 && Math.abs(co.nahLaengs) < 0.25) {
@@ -2221,13 +2261,16 @@
       feld.className = "";
       feld.innerHTML = "Vorbei <span>um " + (bahn.fehlabstand * 100).toFixed(0) + " cm</span>";
     }
-    el("m-zk").innerHTML = bahn.zielKugel.verschiebung.toFixed(2) + " <span>m</span>";
+    el("m-zk").innerHTML = bahn.zielKugel.verschiebung.toFixed(2) +
+      " <span>m" + (bahn.zielKugel.aus ? " — aus dem Feld" : "") + "</span>";
   }
 
   function schreibeProtokoll() {
     var mit = function (wert, e) { return wert.toFixed(2) + " <span>" + e + "</span>"; };
     el("m-donnee").innerHTML  = mit(bahn.donnee, "m");
-    el("m-ende").innerHTML    = mit(bahn.weite, "m");
+    el("m-ende").innerHTML    = bahn.aus
+      ? bahn.weite.toFixed(2) + " <span>m — aus dem Feld</span>"
+      : mit(bahn.weite, "m");
     el("m-rollen").innerHTML  = mit(bahn.rollweg, "m");
     el("m-huepfer").innerHTML = bahn.aufpralle.length + " <span>×</span>";
     el("m-krater").innerHTML  = (bahn.krater * 1000).toFixed(1) + " <span>mm</span>";
