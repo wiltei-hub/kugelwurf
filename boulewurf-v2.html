@@ -132,6 +132,25 @@
     overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   #reglerbereich { display: block; }
+
+  #reiter {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: calc(8px * var(--s)) 18px calc(4px * var(--s));
+    border-bottom: 1px solid rgba(0,0,0,.3);
+  }
+  #reiter button {
+    font-family: var(--f-body); letter-spacing: 0; text-transform: none;
+    font-size: max(10px, calc(12px * var(--fs)));
+    background: transparent; color: #C9C6BD;
+    box-shadow: inset 0 0 0 1px #4A514B; border-radius: 999px;
+    padding: calc(5px * var(--s)) calc(12px * var(--s));
+    min-height: max(22px, calc(30px * var(--s)));
+  }
+  #reiter button[aria-selected="true"] {
+    background: var(--ochre); color: var(--terrain-deep);
+    box-shadow: none; font-weight: 500;
+  }
+  .gruppe[hidden] { display: none; }
   #pult.eingeklappt #reglerbereich,
   #pult.eingeklappt #protokoll { display: none; }
 
@@ -408,7 +427,8 @@
   <div id="vergleich" hidden></div>
 
   <div id="reglerbereich">
-  <section class="gruppe">
+  <div id="reiter" role="tablist" aria-label="Einstellungsgruppen"></div>
+  <section class="gruppe" id="g-wurf" data-reiter="Wurf">
     <h2>Wurf</h2>
     <div class="regler">
       <div class="regel">
@@ -430,7 +450,7 @@
     </div>
   </section>
 
-  <section class="gruppe">
+  <section class="gruppe" id="g-kugel" data-reiter="Kugel">
     <h2>Kugel</h2>
     <div class="regler">
       <div class="regel">
@@ -444,7 +464,7 @@
     </div>
   </section>
 
-  <section class="gruppe">
+  <section class="gruppe" id="g-cochonnet" data-reiter="Cochonnet">
     <h2>Cochonnet</h2>
     <div id="schussschalter">
       <button type="button" class="boden" id="cochonnetkoerper" aria-pressed="true">Cochonnet beweglich</button>
@@ -471,7 +491,7 @@
       nicht angestoßen. Beide Lagen lassen sich auch direkt im Bild verschieben.</p>
   </section>
 
-  <section class="gruppe">
+  <section class="gruppe" id="g-zielkugel" data-reiter="Zielkugel">
     <h2>Zielkugel <button type="button" class="hilfe" id="hilfe-schuss" aria-expanded="false" aria-controls="erklaerung-schuss">Wie wird der Stoß gerechnet?</button></h2>
     <div id="schussschalter2">
       <button type="button" class="boden" id="zielkugel" aria-pressed="true">Zielkugel im Spiel</button>
@@ -515,7 +535,7 @@
     </div>
   </section>
 
-  <section class="gruppe">
+  <section class="gruppe" id="g-serie" data-reiter="Serie">
     <h2>Serie <button type="button" class="hilfe" id="hilfe-serie" aria-expanded="false" aria-controls="erklaerung-serie">Wozu?</button></h2>
     <div class="regler">
       <div class="regel">
@@ -546,7 +566,7 @@
     </div>
   </section>
 
-  <section class="gruppe">
+  <section class="gruppe" id="g-hand" data-reiter="Hand">
     <h2>Hand <button type="button" class="hilfe" id="hilfe-hand" aria-expanded="false" aria-controls="erklaerung-hand">Was bewirkt das?</button></h2>
     <div class="regler">
       <div class="regel">
@@ -575,7 +595,7 @@
     </div>
   </section>
 
-  <section class="gruppe">
+  <section class="gruppe" id="g-boden" data-reiter="Boden">
     <h2>Boden <button type="button" class="hilfe" id="hilfe-boden" aria-expanded="false" aria-controls="erklaerung">Was bedeuten die Werte?</button></h2>
     <div id="boeden" role="group" aria-label="Bodenbeschaffenheit"></div>
     <p id="boden-hinweis"></p>
@@ -2270,6 +2290,7 @@
     var o = findeObjekt(l.px, l.py, oben);
     if (!o) return;
     ziehe = { objekt: o, oben: oben, leinwand: leinwand };
+    zeigeGruppe(o.art === "Cochonnet" ? "g-cochonnet" : "g-zielkugel");
     leinwand.classList.add("zieht");
     if (leinwand.setPointerCapture) leinwand.setPointerCapture(ev.pointerId);
     anhalten();
@@ -2678,6 +2699,45 @@
     planeMessung();
   });
 
+  /* Sieben Einstellungsgruppen passen auf niedrigen Bildschirmen nicht gleichzeitig
+     ins Pult. Eine Reiterleiste zeigt jeweils eine — so bleibt jede erreichbar,
+     ohne dass der Rest im Bildlauf verschwindet. */
+  var gruppen = [], reiterKnoepfe = [];
+
+  function baueReiter() {
+    var leiste = el("reiter");
+    var liste = document.querySelectorAll("#reglerbereich .gruppe");
+    for (var i = 0; i < liste.length; i++) {
+      gruppen.push(liste[i]);
+      (function (abschnitt, nr) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.textContent = abschnitt.getAttribute("data-reiter");
+        b.setAttribute("role", "tab");
+        b.setAttribute("aria-selected", nr === 0 ? "true" : "false");
+        b.addEventListener("click", function () { waehleReiter(nr); });
+        leiste.appendChild(b);
+        reiterKnoepfe.push(b);
+      })(liste[i], i);
+    }
+    waehleReiter(0);
+  }
+
+  function waehleReiter(nr) {
+    for (var i = 0; i < gruppen.length; i++) {
+      gruppen[i].hidden = (i !== nr);
+      reiterKnoepfe[i].setAttribute("aria-selected", i === nr ? "true" : "false");
+    }
+    planeMessung();
+  }
+
+  /* Wird ein Ziel im Bild gezogen, springt die Bedienung auf die passende Gruppe. */
+  function zeigeGruppe(kennung) {
+    for (var i = 0; i < gruppen.length; i++) {
+      if (gruppen[i].id === kennung && gruppen[i].hidden) { waehleReiter(i); return; }
+    }
+  }
+
   el("hilfe-serie").addEventListener("click", function () {
     var offen = el("erklaerung-serie").classList.toggle("offen");
     this.setAttribute("aria-expanded", offen ? "true" : "false");
@@ -2760,6 +2820,7 @@
 
   setzeMassstabsfaktoren();
   baueBodenwahl();
+  baueReiter();
   zeigeSchussfelder();
   beschrifteRegler();
   bahn = simuliere(parameter());
