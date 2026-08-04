@@ -2580,7 +2580,14 @@
       }
       frameIndex = i;
       zeichne(i);
-      if (fertig && demoWurf) { demoWurf = false; zufallslage(); }
+      if (fertig && demoWurf) {
+        demoWurf = false;
+        /* Eine Sekunde stehen lassen, damit die Endlage des Demowurfs zu sehen
+           ist, bevor die Ziele neu ausgelegt werden. */
+        setTimeout(function () {
+          try { zufallslage(); } catch (e) { meldeFehler(e, "Neuverteilung"); }
+        }, 1000);
+      }
     } catch (e) {
       meldeFehler(e, "Animation");
       laeuft = false;
